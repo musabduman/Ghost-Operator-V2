@@ -1,7 +1,6 @@
 import base64
 import re
 from groq import Groq
-import config
 
 # Vision modülü, ana dosyadan bağımsız kendi bağlantısını kuruyor
 client = Groq(api_key=config.groq_api_key)
