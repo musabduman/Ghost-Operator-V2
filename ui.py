@@ -8,6 +8,7 @@ import subprocess
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import threading
+import pyttsx3
 
 from rag_hafıza import Bellek
 from kontrol.güvenlik import guvenlik_kontrolu
@@ -227,7 +228,22 @@ class GhostOperatorUI(ctk.CTk):
                     if aranan_isim in d.lower():
                         return os.path.join(root, d) # Gerçek yolu döndür
         return None
-    
+    def sesi_turkce_yap(self):
+        self.tts_engine = pyttsx3.init()
+        voices = self.tts_engine.getProperty('voices')
+        for voice in voices:
+            if "turkish" in voice.name.lower() or "tr" in voice.id.lower():
+                self.tts_engine.setProperty('voice', voice.id)
+                break
+        self.tts_engine.setProperty('rate', 170) 
+
+    def konus(self, metin):
+        def run_tts():
+            temiz_metin = re.sub(r'\[.*?\]', '', metin) 
+            self.tts_engine.say(temiz_metin)
+            self.tts_engine.runAndWait()
+        threading.Thread(target=run_tts, daemon=True).start()
+
     def mikrofonu_otomatik_dinle(self):
         self.entry.configure(placeholder_text="🎙️ Ghost Dinliyor... (Konuş)")
         self.update()
@@ -294,8 +310,7 @@ class GhostOperatorUI(ctk.CTk):
             self.log_text.insert("end", "\nSen: " + self.user_input + "\n")
             self.log_text.insert("end", "Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.\n", "green")
             # Varsa sesli de söylesin
-            # self.konus("Anlaşıldı Patron, nöbetçi moduna geçiyorum.") 
-            
+            # self.konus("Anlaşıldı Patron, nöbetçi moduna geçiyorum.")     
             # 2 saniye sonra arayüzü tamamen kapat (Böylece dinleyici.py tekrar devreye girer)
             self.after(2000, self.destroy) 
             return
