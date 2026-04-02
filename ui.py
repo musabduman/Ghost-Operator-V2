@@ -123,7 +123,9 @@ class GhostOperatorUI(ctk.CTk):
 
         self.btn_sonraki = ctk.CTkButton(self.medya_frame, text="⏭", width=40, height=30, fg_color="#333333", hover_color="#444444", command=lambda: muzik_kontrol("sonraki"))
         self.btn_sonraki.pack(side="left", padx=5)    
-    
+
+        self.after(500, self.otomatik_uyanis)
+
     def fare_ustunde(self, event):
         # Fare uygulamanın üstüne gelince saydamlığı %95 yap (neredeyse tam net)
         self.attributes('-alpha', 0.98)
@@ -225,6 +227,36 @@ class GhostOperatorUI(ctk.CTk):
                         return os.path.join(root, d) # Gerçek yolu döndür
         return None
     
+    def otomatik_uyanis(self):
+        self.log_text.insert("end", "\n[SİSTEM]: Uyanış protokolü başlatıldı...\n", "green")
+        self.model_label.configure(text="Aktif Zeka: Sistem Uyanıyor...", text_color="#888888")
+        
+        # Arayüz donmasın diye bu ilk konuşmayı da arka planda (Thread) yapıyoruz
+        def arka_plan_uyanis():
+            gizli_istek = (
+                "GİZLİ SİSTEM BİLGİSİ: Ghost, az önce nöbetçi modundan uyandırıldın. "
+                "Hazır olduğunu bildiren o çok kısa, havalı giriş cümleni söyle. "
+                "(Örn: Sistemler çevrimiçi, dinliyorum.)"
+            )
+            
+            try:
+                # Doğrudan beyne (Gemma'ya) soruyoruz
+                cevap = self.ghost_beyin(gizli_istek)
+                
+                self.after(0, lambda: self.log_text.insert("end", f"Ghost: {cevap}\n"))
+                self.after(0, lambda: self.log_text.see("end"))
+                
+                # EĞER SESLİ OKUMA FONKSİYONUN VARSA BURADA ÇAĞIRABİLİRSİN:
+                # text_to_speech(cevap)
+                
+                # --- ASIL MÜCİZE BURADA BAŞLAYACAK ---
+                # self.after(0, self.mikrofonu_otomatik_dinle) 
+                
+            except Exception as e:
+                self.after(0, lambda: self.log_text.insert("end", f"SİSTEM HATA (Uyanış): {e}\n", "red"))
+
+        threading.Thread(target=arka_plan_uyanis, daemon=True).start()
+        
     def komut_isleme(self, event):
         # 1. KULLANICI GİRDİSİ
         self.user_input = self.entry.get()

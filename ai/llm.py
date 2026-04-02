@@ -1,7 +1,8 @@
 import re
 import os   
 import requests
- 
+import openai
+
 class BaseLLM:
     def generate(self, prompt):
         raise NotImplementedError
@@ -143,11 +144,40 @@ class QwenWorker:
         except Exception as e:
             raise Exception(f"Taşeron (Qwen) Çöktü: {e}")
 
+class qwenOmni(BaseLLM):
+    def __init__(self,model="qwen-3.5-omni"):
+        self.model=model
+        self.client = openai.OpenAI(
+            base_url="http://localhost:8000/v1", 
+            api_key="local"
+        )
+
+    def analyze_situation(self, image_path, voice_path):
+        # Burası hem ekranı görüp hem sesi duyduğu kısım
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Ekranı analiz et ve sesli komutu uygula."},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_path}"}},
+                            {"type": "audio", "input_audio": {"data": voice_path, "format": "wav"}}
+                        ]
+                    }
+                ]
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"[SİSTEM HATA] Omni Gözlemci Çöktü: {e}"
 # 3. KÖPRÜ (ORKESTRA ŞEFİ)
 class GhostController():
     def __init__(self, api_key=None): 
         # Ana muhatabımız Gemma 12B
         self.supervisor = ChatLLM(model="gpt-oss:20b-cloud") 
+        #ekran görüntüsü alan konuşma yetisi olan model
+        self.omni=qwenOmni()
         # Arka plandaki görünmez kod yazıcımız
         self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
     
