@@ -4,7 +4,10 @@ import re
 import difflib
 import threading
 import traceback
-import subprocess
+import subprocess 
+import sounddevice as sd
+import scipy.io.wavfile as wav
+import threading
 
 from rag_hafıza import Bellek
 from kontrol.güvenlik import guvenlik_kontrolu
@@ -12,7 +15,6 @@ from ai.llm import ChatLLM
 from ai.llm import GhostController
 from kontrol.spotify import SpotifyManager
 from kontrol.kontrol import google_arama, muzik_kontrol 
-from screenshot import screenshot_al_ve_yorumla
 
 hafiza = Bellek("ghost_akis")
 # SPOTIFY'I BAŞLATALIM (Importların hemen altına ekle)
@@ -85,8 +87,7 @@ class GhostOperatorUI(ctk.CTk):
             height=35,
             font=("Consolas", 13),
             fg_color="#2a2a2a",
-            hover_color="#3a3a3a",
-            command=lambda: screenshot_al_ve_yorumla(self, self.entry.get().strip())
+            hover_color="#3a3a3a"
         )
         self.ss_button.pack(pady=(0, 5))
         
@@ -227,6 +228,31 @@ class GhostOperatorUI(ctk.CTk):
                         return os.path.join(root, d) # Gerçek yolu döndür
         return None
     
+    def mikrofonu_otomatik_dinle(self):
+        self.entry.configure(placeholder_text="🎙️ Ghost Dinliyor... (Konuş)")
+        self.update()
+
+        def bg_dinle():
+            # 5 saniyelik ses kaydı alır (Senin komutun)
+            fs = 16000  # Qwen Omni genelde 16kHz sever
+            sure = 5    # 5 saniye dinleme süresi
+            
+            # Kayıt işlemi
+            ses_verisi = sd.rec(int(sure * fs), samplerate=fs, channels=1, dtype='int16')
+            sd.wait() # Kaydın bitmesini bekle
+            
+            # Kaydı kaydet
+            ses_dosyasi = "komut.wav"
+            wav.write(ses_dosyasi, fs, ses_verisi)
+            
+            self.after(0, lambda: self.entry.configure(placeholder_text="Ghost Düşünüyor..."))
+            
+            # BURASI ÖNEMLİ: Artık metin (user_input) değil, ses dosyasının yolunu beyne gönderiyoruz!
+            # Eğer Qwen Omni'yi henüz llm.py'ye tam bağlamadıysan burası şu anki Gemma ile hata verir.
+            # self.ghost_omni_beyin(ses_dosyasi) 
+            
+        threading.Thread(target=bg_dinle, daemon=True).start()
+
     def otomatik_uyanis(self):
         self.log_text.insert("end", "\n[SİSTEM]: Uyanış protokolü başlatıldı...\n", "green")
         self.model_label.configure(text="Aktif Zeka: Sistem Uyanıyor...", text_color="#888888")
@@ -242,7 +268,7 @@ class GhostOperatorUI(ctk.CTk):
             try:
                 # Doğrudan beyne (Gemma'ya) soruyoruz
                 cevap = self.ghost_beyin(gizli_istek)
-                
+                self.konus(cevap)
                 self.after(0, lambda: self.log_text.insert("end", f"Ghost: {cevap}\n"))
                 self.after(0, lambda: self.log_text.see("end"))
                 
@@ -256,13 +282,24 @@ class GhostOperatorUI(ctk.CTk):
                 self.after(0, lambda: self.log_text.insert("end", f"SİSTEM HATA (Uyanış): {e}\n", "red"))
 
         threading.Thread(target=arka_plan_uyanis, daemon=True).start()
-        
+
     def komut_isleme(self, event):
         # 1. KULLANICI GİRDİSİ
         self.user_input = self.entry.get()
         if not self.user_input.strip():
             return
-
+        
+        kapanis_kelimeleri = ["uyku modu", "teşekkürler ghost", "kapan", "çıkış yap", "görüşürüz"]
+        if any(kelime in self.user_input.lower() for kelime in kapanis_kelimeleri):
+            self.log_text.insert("end", "\nSen: " + self.user_input + "\n")
+            self.log_text.insert("end", "Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.\n", "green")
+            # Varsa sesli de söylesin
+            # self.konus("Anlaşıldı Patron, nöbetçi moduna geçiyorum.") 
+            
+            # 2 saniye sonra arayüzü tamamen kapat (Böylece dinleyici.py tekrar devreye girer)
+            self.after(2000, self.destroy) 
+            return
+        
         self.log_text.insert("end", f"\nSen: {self.user_input}\n")
         self.entry.delete(0, 'end')
 
