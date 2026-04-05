@@ -7,8 +7,9 @@ import traceback
 import subprocess 
 import sounddevice as sd
 import scipy.io.wavfile as wav
-import threading
 import pyttsx3
+import pythoncom
+import speech_recognition as sr
 
 from rag_hafıza import Bellek
 from kontrol.güvenlik import guvenlik_kontrolu
@@ -44,6 +45,8 @@ class GhostOperatorUI(ctk.CTk):
     
     def __init__(self):
         super().__init__()
+
+        self.sesi_turkce_yap()
 
         self.title("Ghost Operator v2")
         self.geometry("380x500")
@@ -228,6 +231,7 @@ class GhostOperatorUI(ctk.CTk):
                     if aranan_isim in d.lower():
                         return os.path.join(root, d) # Gerçek yolu döndür
         return None
+    
     def sesi_turkce_yap(self):
         self.tts_engine = pyttsx3.init()
         voices = self.tts_engine.getProperty('voices')
@@ -239,9 +243,41 @@ class GhostOperatorUI(ctk.CTk):
 
     def konus(self, metin):
         def run_tts():
-            temiz_metin = re.sub(r'\[.*?\]', '', metin) 
-            self.tts_engine.say(temiz_metin)
-            self.tts_engine.runAndWait()
+            import pythoncom
+            pythoncom.CoInitialize() 
+            try:
+                engine = pyttsx3.init()
+                voices = engine.getProperty('voices')
+                
+                turkce_bulundu = False
+                for voice in voices:
+                    if "turkish" in voice.name.lower() or "tr" in voice.id.lower():
+                        engine.setProperty('voice', voice.id)
+                        turkce_bulundu = True
+                        break
+                
+                # Önce köşeli parantezli sistem etiketlerini temizle
+                temiz_metin = re.sub(r'\[.*?\]', '', metin)
+                
+                # EĞER TÜRKÇE SES YOKSA İNGİLİZCE MOTORU KANDIRMA ALGORİTMASI
+                if not turkce_bulundu:
+                    # İngilizce motorun Türkçe okuyabilmesi için fonetik çeviri
+                    harfler = {
+                        'ç': 'ch', 'ş': 'sh', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ü': 'u',
+                        'Ç': 'Ch', 'Ş': 'Sh', 'Ğ': 'G', 'İ': 'I', 'Ö': 'O', 'Ü': 'U',
+                        'c': 'j' # "cevap" kelimesini "sevap" okumasın diye "je" sesi veriyoruz
+                    }
+                    for tr, eng in harfler.items():
+                        temiz_metin = temiz_metin.replace(tr, eng)
+
+                engine.setProperty('rate', 170)
+                engine.say(temiz_metin)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"TTS Hatası: {e}")
+            finally:
+                pythoncom.CoUninitialize()
+                
         threading.Thread(target=run_tts, daemon=True).start()
 
     def mikrofonu_otomatik_dinle(self):
@@ -261,12 +297,37 @@ class GhostOperatorUI(ctk.CTk):
             ses_dosyasi = "komut.wav"
             wav.write(ses_dosyasi, fs, ses_verisi)
             
-            self.after(0, lambda: self.entry.configure(placeholder_text="Ghost Düşünüyor..."))
+            self.after(0, lambda: self.entry.configure(placeholder_text="Omni Analiz Ediyor..."))
             
-            # BURASI ÖNEMLİ: Artık metin (user_input) değil, ses dosyasının yolunu beyne gönderiyoruz!
-            # Eğer Qwen Omni'yi henüz llm.py'ye tam bağlamadıysan burası şu anki Gemma ile hata verir.
-            # self.ghost_omni_beyin(ses_dosyasi) 
+            try:
+                r = sr.Recognizer() 
+                with sr.AudioFile(ses_dosyasi) as source:
+                    audio_data = r.record(source)
+                # --- YENİ EKLENEN GÜVENLİK DUVARI ---
+                # Sesi Google'ın altyapısıyla Türkçe metne çevir (Hızlı ve stabil)
+                cevap = r.recognize_google(audio_data, language="tr-TR")
+                
+                # Sorun yoksa duyduğunu ekrana yaz
+                self.after(0, lambda: self.log_text.insert("end", f"\nSen (Sesli): {cevap}\n"))
+                
+                # Sanki klavyeden yazılmış gibi Ghost beynine ilet
+                self.user_input = cevap
+                self.after(0, lambda: self.entry.delete(0, 'end'))
+                self.after(0, lambda: self.entry.insert(0, cevap))
+                
+                # Gemma'yı (Yöneticiyi) tetikle
+                self.after(100, lambda: self.komut_isleme(None))
+                
+            except sr.UnknownValueError:
+                self.after(0, lambda: self.log_text.insert("end", "SİSTEM: Ses anlaşılamadı, mikrofona biraz daha yaklaş Patron.\n", "red"))
+            except sr.RequestError:
+                self.after(0, lambda: self.log_text.insert("end", "SİSTEM HATA: STT servisine ulaşılamıyor (İnternet bağlantısını kontrol et).\n", "red"))
+            except Exception as e:
+                self.after(0, lambda: self.log_text.insert("end", f"SİSTEM HATA (Ses Döngüsü): {e}\n", "red"))
             
+            finally:
+                self.after(0, lambda: self.entry.configure(placeholder_text="Patrondan komut bekliyor..."))
+                 
         threading.Thread(target=bg_dinle, daemon=True).start()
 
     def otomatik_uyanis(self):
@@ -292,7 +353,7 @@ class GhostOperatorUI(ctk.CTk):
                 # text_to_speech(cevap)
                 
                 # --- ASIL MÜCİZE BURADA BAŞLAYACAK ---
-                # self.after(0, self.mikrofonu_otomatik_dinle) 
+                self.after(0, self.mikrofonu_otomatik_dinle) 
                 
             except Exception as e:
                 self.after(0, lambda: self.log_text.insert("end", f"SİSTEM HATA (Uyanış): {e}\n", "red"))
@@ -301,6 +362,8 @@ class GhostOperatorUI(ctk.CTk):
 
     def komut_isleme(self, event):
         # 1. KULLANICI GİRDİSİ
+        self.son_komut_sesli = (event is None)
+
         self.user_input = self.entry.get()
         if not self.user_input.strip():
             return
@@ -372,6 +435,10 @@ class GhostOperatorUI(ctk.CTk):
                     ekran_cevabi, 
                     flags=re.IGNORECASE
                 )
+              
+                if self.son_komut_sesli:
+                    self.konus(ekran_cevabi)
+
                 # GUI GÜNCELLEMELERİ THREAD GÜVENLİ HALE GETİRİLDİ
                 self.after(0, lambda: self.log_text.insert("end", f"Ghost: {ekran_cevabi}\n"))
                 self.after(0, lambda: self.log_text.see("end"))
