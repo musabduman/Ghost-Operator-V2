@@ -2,6 +2,7 @@ import re
 import os   
 import requests
 import openai
+import base64
 
 class BaseLLM:
     def generate(self, prompt):
@@ -148,29 +149,47 @@ class qwenOmni(BaseLLM):
     def __init__(self,model="qwen-3.5-omni"):
         self.model=model
         self.client = openai.OpenAI(
-            base_url="http://localhost:8000/v1", 
-            api_key="local"
+            base_url="http://localhost:11434/v1", 
+            api_key="local-token" 
         )
 
     def analyze_situation(self, image_path, voice_path):
-        # Burası hem ekranı görüp hem sesi duyduğu kısım
         try:
+            # Sesi hazırla
+            with open(voice_path, "rb") as f:
+                encoded_audio = base64.b64encode(f.read()).decode('utf-8')
+
+            # Prompt'u hazırlıyoruz (Omni'yi sadece sesi metne çevirmeye zorluyoruz)
+            mesaj_icerigi = [
+                {"type": "text", "text": "Kullanıcının sesini dinle ve SADECE ne dediğini metne çevir (Transcription). Asla cevap verme, yorum yapma. Duyduğun cümleyi birebir yaz."}
+            ]
+
+            # Eğer görüntü gönderilmişse pakete ekle (Boşsa atla)
+            if image_path:
+                with open(image_path, "rb") as f:
+                    encoded_img = base64.b64encode(f.read()).decode('utf-8')
+                mesaj_icerigi.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_img}"}})
+
+            # Sesi pakete ekle
+            mesaj_icerigi.append({"type": "input_audio",
+                                   "input_audio": {
+                                        "data": encoded_audio,
+                                        "format": "wav"}})
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Ekranı analiz et ve sesli komutu uygula."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_path}"}},
-                            {"type": "audio", "input_audio": {"data": voice_path, "format": "wav"}}
-                        ]
+                        "content": mesaj_icerigi
                     }
                 ]
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content.strip()
+            
         except Exception as e:
-            return f"[SİSTEM HATA] Omni Gözlemci Çöktü: {e}"
+            return f"[SİSTEM HATA] Omni Kulak Çöktü: {e}"
+        
 # 3. KÖPRÜ (ORKESTRA ŞEFİ)
 class GhostController():
     def __init__(self, api_key=None): 
@@ -180,6 +199,12 @@ class GhostController():
         self.omni=qwenOmni()
         # Arka plandaki görünmez kod yazıcımız
         self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
+    
+    def omni_ses_isle(self, ses_yolu):
+        # Arayüzden gelen ses dosyasını Omni'ye verir, dönen cevabı arayüze paslar
+        aktif_model = "Qwen Omni (Ses Analizi)"
+        cevap = self.omni.analyze_situation(ses_yolu)
+        return cevap, aktif_model
     
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")
@@ -209,20 +234,20 @@ class GhostController():
             try:
                 # Gizli sistem bilgisinden mevcut kodu çıkarıp işçiye veriyoruz (varsa)
                 mevcut_kod = ""
-                try:
-                    if os.path.exists(dosya_yolu):
-                        with open(dosya_yolu, "r", encoding="utf-8") as f:
-                            mevcut_kod = f.read()
-                        # 3. İşçi kodu üretiyor
-                    saf_kod = self.worker.saf_kod_uret(talimat=talimat, mevcut_kod=mevcut_kod)
-                    
-                    # 4. UI'nin anlayacağı formata çevirip Gemma'nın mesajının içine gömüyoruz
-                    ui_formati = f"[DOSYA_YAZ: {dosya_yolu}]\n<<<KOD_BASLANGIC>>>\n{saf_kod}\n<<<KOD_BITIS>>>"
-                    cevap = cevap.replace(kod_istegi_eslesme.group(0), ui_formati)
-                    
-                except Exception:
-                    mevcut_kod = ""
-            
+                if os.path.exists(dosya_yolu):
+                    try:
+                        if os.path.exists(dosya_yolu):
+                            with open(dosya_yolu, "r", encoding="utf-8") as f:
+                                mevcut_kod = f.read()
+                    except Exception:
+                        pass
+                            # 3. İşçi kodu üretiyor
+                saf_kod = self.worker.saf_kod_uret(talimat=talimat, mevcut_kod=mevcut_kod)
+                
+                # 4. UI'nin anlayacağı formata çevirip Gemma'nın mesajının içine gömüyoruz
+                ui_formati = f"[DOSYA_YAZ: {dosya_yolu}]\n<<<KOD_BASLANGIC>>>\n{saf_kod}\n<<<KOD_BITIS>>>"
+                cevap = cevap.replace(kod_istegi_eslesme.group(0), ui_formati)
+                
             except Exception as e:
                 cevap = f"[SİSTEM HATA] Taşeron koda ulaşamadı: {e}"
 
