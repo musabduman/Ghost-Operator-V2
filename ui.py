@@ -8,7 +8,6 @@ import subprocess
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import pyttsx3
-import pythoncom
 import speech_recognition as sr
 
 from rag_hafıza import Bellek

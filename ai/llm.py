@@ -94,7 +94,7 @@ class ChatLLM(BaseLLM):
             response.raise_for_status() 
             res = response.json()["message"]["content"].strip()
             self.mesaj_gecmisi.append({"role": "assistant", "content": res})
-            if len(self.mesaj_gecmisi) > 6:
+            if len(self.mesaj_gecmisi) > 12:
                 self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-5:]
             return res
         except Exception as e:
@@ -153,7 +153,7 @@ class qwenOmni(BaseLLM):
             api_key="local-token" 
         )
 
-    def analyze_situation(self, image_path, voice_path):
+    def analyze_situation(self,  voice_path,image_path=None):
         try:
             # Sesi hazırla
             with open(voice_path, "rb") as f:
@@ -174,7 +174,7 @@ class qwenOmni(BaseLLM):
             mesaj_icerigi.append({"type": "input_audio",
                                    "input_audio": {
                                         "data": encoded_audio,
-                                        "format": "wav"}})
+                                        "format": "wav"}})  
 
             response = self.client.chat.completions.create(
                 model=self.model,
