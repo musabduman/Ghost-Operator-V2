@@ -10,6 +10,7 @@ import scipy.io.wavfile as wav
 import pyttsx3
 import speech_recognition as sr
 
+from ai.konus import GhostSpeech
 from rag_hafıza import Bellek
 from kontrol.güvenlik import guvenlik_kontrolu
 from ai.llm import ChatLLM
@@ -45,8 +46,7 @@ class GhostOperatorUI(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.sesi_turkce_yap()
-
+        self.konus = GhostSpeech()
         self.title("Ghost Operator v2")
         self.geometry("380x500")
         self.attributes('-alpha', 0.98) 
@@ -230,54 +230,6 @@ class GhostOperatorUI(ctk.CTk):
                     if aranan_isim in d.lower():
                         return os.path.join(root, d) # Gerçek yolu döndür
         return None
-    
-    def sesi_turkce_yap(self):
-        self.tts_engine = pyttsx3.init()
-        voices = self.tts_engine.getProperty('voices')
-        for voice in voices:
-            if "turkish" in voice.name.lower() or "tr" in voice.id.lower():
-                self.tts_engine.setProperty('voice', voice.id)
-                break
-        self.tts_engine.setProperty('rate', 170) 
-
-    def konus(self, metin):
-        def run_tts():
-            import pythoncom
-            pythoncom.CoInitialize() 
-            try:
-                engine = pyttsx3.init()
-                voices = engine.getProperty('voices')
-                
-                turkce_bulundu = False
-                for voice in voices:
-                    if "turkish" in voice.name.lower() or "tr" in voice.id.lower():
-                        engine.setProperty('voice', voice.id)
-                        turkce_bulundu = True
-                        break
-                
-                # Önce köşeli parantezli sistem etiketlerini temizle
-                temiz_metin = re.sub(r'\[.*?\]', '', metin)
-                
-                # EĞER TÜRKÇE SES YOKSA İNGİLİZCE MOTORU KANDIRMA ALGORİTMASI
-                if not turkce_bulundu:
-                    # İngilizce motorun Türkçe okuyabilmesi için fonetik çeviri
-                    harfler = {
-                        'ç': 'ch', 'ş': 'sh', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ü': 'u',
-                        'Ç': 'Ch', 'Ş': 'Sh', 'Ğ': 'G', 'İ': 'I', 'Ö': 'O', 'Ü': 'U',
-                        'c': 'j' # "cevap" kelimesini "sevap" okumasın diye "je" sesi veriyoruz
-                    }
-                    for tr, eng in harfler.items():
-                        temiz_metin = temiz_metin.replace(tr, eng)
-
-                engine.setProperty('rate', 170)
-                engine.say(temiz_metin)
-                engine.runAndWait()
-            except Exception as e:
-                print(f"TTS Hatası: {e}")
-            finally:
-                pythoncom.CoUninitialize()
-                
-        threading.Thread(target=run_tts, daemon=True).start()
 
     def mikrofonu_otomatik_dinle(self):
         self.entry.configure(placeholder_text="🎙️ Ghost Dinliyor... (Konuş)")
@@ -295,8 +247,6 @@ class GhostOperatorUI(ctk.CTk):
             # Kaydı kaydet
             ses_dosyasi = "komut.wav"
             wav.write(ses_dosyasi, fs, ses_verisi)
-            
-            self.after(0, lambda: self.entry.configure(placeholder_text="Omni Analiz Ediyor..."))
             
             try:
                 r = sr.Recognizer() 
@@ -344,7 +294,7 @@ class GhostOperatorUI(ctk.CTk):
             try:
                 # Doğrudan beyne (Gemma'ya) soruyoruz
                 cevap = self.ghost_beyin(gizli_istek)
-                self.konus(cevap)
+                self.konus.speak(cevap)
                 self.after(0, lambda: self.log_text.insert("end", f"Ghost: {cevap}\n"))
                 self.after(0, lambda: self.log_text.see("end"))
                 
@@ -355,7 +305,7 @@ class GhostOperatorUI(ctk.CTk):
                 self.after(0, self.mikrofonu_otomatik_dinle) 
                 
             except Exception as e:
-                self.after(0, lambda: self.log_text.insert("end", f"SİSTEM HATA (Uyanış): {e}\n", "red"))
+                self.after(0, lambda e=e: self.log_text.insert("end", f"SİSTEM HATA (Uyanış): {e} \n", "red"))
 
         threading.Thread(target=arka_plan_uyanis, daemon=True).start()
 
@@ -436,7 +386,7 @@ class GhostOperatorUI(ctk.CTk):
                 )
               
                 if self.son_komut_sesli:
-                    self.konus(ekran_cevabi)
+                    self.konus.speak(ekran_cevabi)
 
                 # GUI GÜNCELLEMELERİ THREAD GÜVENLİ HALE GETİRİLDİ
                 self.after(0, lambda: self.log_text.insert("end", f"Ghost: {ekran_cevabi}\n"))
