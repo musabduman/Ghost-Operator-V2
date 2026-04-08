@@ -24,11 +24,6 @@ def callback(indata, frames, time, status):
 
 ui_process = None 
 
-def callback(indata, frames, time, status):
-    if status:
-        print(status, file=sys.stderr)
-    q.put(bytes(indata))
-
 def ghost_uyandir():
     global ui_process # Dışarıdaki değişkeni kullanacağımızı belirtiyoruz
     # KALKAN 1: Eğer arayüz zaten açıksa (poll() None dönüyorsa çalışıyordur), yenisini açma!
@@ -45,7 +40,7 @@ def ghost_uyandir():
     # ui.py'yi çalıştır ve süreci ui_process değişkenine kaydet
     ui_process = subprocess.Popen([sys.executable, ui_yolu])
     
-    # 10 saniye çok uzun, 3 saniye sağır modu yeterlidir.
+    # 10 saniye çok uzun, 3 saniye sağır modu yeterlidir.   
     print("Nöbetçi 3 saniye sağır moduna geçiyor...")
     time.sleep(3) 
     
@@ -54,18 +49,6 @@ def ghost_uyandir():
         q.queue.clear()
         
     print("Nöbetçi tekrar dinliyor...")
-
-def ghost_uyandir():
-    print("\n[!] GHOST UYANIYOR! Arayüz tetikleniyor...")
-    mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
-    ui_yolu = os.path.join(mevcut_dizin, "ui.py")
-    
-    # ui.py'yi çalıştır
-    subprocess.Popen([sys.executable, ui_yolu])
-    
-    # Uyandıktan sonra üst üste 10 kere açılmaması için nöbetçiyi biraz uyutuyoruz
-    print("Nöbetçi 10 saniye dinleniyor...")
-    time.sleep(10) 
 
 def ana_dongu():
     print(">>> Ghost Nöbetçisi Devrede... (VRAM: 0, İnternet: Yok)")
