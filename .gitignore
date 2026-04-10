@@ -1,3 +1,5 @@
 ghost_hafıza.json
 model/
-__pycache__
+__pycache__/
+.cache
+ai.__pycache__/
