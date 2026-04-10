@@ -136,8 +136,9 @@ class GhostOperatorUI(ctk.CTk):
 
         self.protocol("WM_DELETE_WINDOW",self.kapat)
         self.after(500, self.sinyal_kontrol)
+   
     def kapat(self):
-        if os.path.exists("ghot_mesgul.lock"):
+        if os.path.exists("ghost_mesgul.lock"):
             os.remove("ghost_mesgul.lock")
         self.destroy()
    
@@ -296,10 +297,13 @@ class GhostOperatorUI(ctk.CTk):
                 os.remove("uyandir_sinyali.txt")
             except:
                 pass
-            self.attributes('-alpha',0.98)
+            
+            self.deiconify()
+            self.attributes('-topmost',True)
             self.lift()
             self.focus_force()
-
+            self.attributes('-alpha',0.98)
+            
             self.after(0, self.mikrofonu_otomatik_dinle)
         #her yarım saniyede bir kontrol et
         self.after(500,self.sinyal_kontrol)
@@ -307,15 +311,16 @@ class GhostOperatorUI(ctk.CTk):
     def otomatik_uyanis(self):
         self.log_text.insert("end", "\n[SİSTEM]: Uyanış protokolü başlatıldı...\n", "green")
         self.model_label.configure(text="Aktif Zeka: Sistem Uyanıyor...", text_color="#888888")
-        
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()        
+            pygame.mixer.music.load("sistem_baslangic.mp3")
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Giriş sesinde hata: {e}")
+            
         # Arayüz donmasın diye bu ilk konuşmayı da arka planda (Thread) yapıyoruz
         def arka_plan_uyanis():
-            try:
-                if not pygame.mixer.get_init():
-                    pygame.mixer.music.load("sistem_baslangic.mp3")
-                    pygame.mixer.music.play()
-            except Exception as e:
-                print(f"Giriş sesinde hata: {e}")
             
             gizli_istek = (
                 "GİZLİ SİSTEM BİLGİSİ: Ghost, az önce nöbetçi modundan uyandırıldın. "
