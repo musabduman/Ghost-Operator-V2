@@ -9,6 +9,7 @@ import sounddevice as sd
 import scipy.io.wavfile as wav
 import pyttsx3
 import speech_recognition as sr
+import pygame
 
 from ai.konus import GhostSpeech
 from rag_hafıza import Bellek
@@ -133,8 +134,8 @@ class GhostOperatorUI(ctk.CTk):
         with open("ghost_mesgul.lock","w")as f:
             f.write("mesgul")
 
-        self.protocol("WM_DELETE_WINDOW",self.kapt)
-    
+        self.protocol("WM_DELETE_WINDOW",self.kapat)
+        self.after(500, self.sinyal_kontrol)
     def kapat(self):
         if os.path.exists("ghot_mesgul.lock"):
             os.remove("ghost_mesgul.lock")
@@ -288,6 +289,20 @@ class GhostOperatorUI(ctk.CTk):
                 self.after(0, lambda: self.entry.configure(placeholder_text="Patrondan komut bekliyor..."))
                  
         threading.Thread(target=bg_dinle, daemon=True).start()
+   
+    def sinyal_kontrol(self):
+        if os.path.exists("uyandir_sinyali.txt"):
+            try:
+                os.remove("uyandir_sinyali.txt")
+            except:
+                pass
+            self.attributes('-alpha',0.98)
+            self.lift()
+            self.focus_force()
+
+            self.after(0, self.mikrofonu_otomatik_dinle)
+        #her yarım saniyede bir kontrol et
+        self.after(500,self.sinyal_kontrol)
 
     def otomatik_uyanis(self):
         self.log_text.insert("end", "\n[SİSTEM]: Uyanış protokolü başlatıldı...\n", "green")
@@ -295,10 +310,17 @@ class GhostOperatorUI(ctk.CTk):
         
         # Arayüz donmasın diye bu ilk konuşmayı da arka planda (Thread) yapıyoruz
         def arka_plan_uyanis():
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.music.load("sistem_baslangic.mp3")
+                    pygame.mixer.music.play()
+            except Exception as e:
+                print(f"Giriş sesinde hata: {e}")
+            
             gizli_istek = (
                 "GİZLİ SİSTEM BİLGİSİ: Ghost, az önce nöbetçi modundan uyandırıldın. "
-                "Hazır olduğunu bildiren o çok kısa, havalı giriş cümleni söyle. "
-                "(Örn: Sistemler çevrimiçi, dinliyorum.)"
+                "Hazır olduğunu bildiren o çok kısa, havalı giriş cümleni söyle. Örneklerden SADECE birini seç. "
+                "(Örn: Dinliyorum. Örn: Efendim. Örn: Nasıl yardımcı olabilirim."
             )
             
             try:
@@ -372,6 +394,7 @@ class GhostOperatorUI(ctk.CTk):
                         baglam_metni = "\n- ".join(hatirlananlar)
                         # Ghost'a soruyu sormadan önce eski anılarını fısılda
                         zenginlestirilmis_input = (
+                            f"[GİZLİ BİLGİ: Kullanıcı bu komutu SESLİ olarak verdi. Asla uzun cevap verme , saniyeler içinde sadeceeylem etietini kullan.]\nKullanıcı: {aktif_input}"
                             f"[SİSTEM NOTU: Geçmiş hafızandan şu bilgileri hatırlıyorsun:\n"
                             f"- {baglam_metni}\n"
                             f"Eğer bu bilgiler kullanıcının sorusuyla ilgiliyse cevaplarken kullan.]\n\n"

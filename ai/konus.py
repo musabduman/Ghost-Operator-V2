@@ -8,7 +8,7 @@ import re
 class GhostSpeech:
     def __init__(self):
         # Sesi burada seçiyoruz. Ahmet tok bir erkek sesi, Emel ise kadın sesidir.
-        self.voice = "tr-TR-AhmetNeural" 
+        self.voice = "tr-TR-EmelNeural" 
         self.output_file = "ghost_voice.mp3"
         
         # Pygame mixer'ı başlat (Hata vermemesi için kontrol ekledik)
