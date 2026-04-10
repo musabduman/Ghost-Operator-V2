@@ -28,12 +28,16 @@ ui_process = None
 def ghost_uyandir():
     global ui_process # Dışarıdaki değişkeni kullanacağımızı belirtiyoruz
     # KALKAN 1: Eğer arayüz zaten açıksa (poll() None dönüyorsa çalışıyordur), yenisini açma!
+    print("\n Ghost zaten aktif. Arayüze Uyanma Sinyali göderiliyor...")
     if ui_process is not None and ui_process.poll() is None:
         # Uyku halindeki sarkmaları engellemek için sadece kuyruğu boşaltıp geri dönüyoruz
+        with open("uyandir_sinyal.txt","w")as f:
+            f.write("uyan")
+            
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            pygame.mixer.music.load("efendim.mp3")
+            pygame.mixer.music.load("sistem_baslangic.mp3")
             pygame.mixer.music.play()
             
             while pygame.mixer.music.get_busy():
