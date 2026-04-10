@@ -130,6 +130,16 @@ class GhostOperatorUI(ctk.CTk):
 
         self.after(500, self.otomatik_uyanis)
 
+        with open("ghost_mesgul.lock","w")as f:
+            f.write("mesgul")
+
+        self.protocol("WM_DELETE_WINDOW",self.kapt)
+    
+    def kapat(self):
+        if os.path.exists("ghot_mesgul.lock"):
+            os.remove("ghost_mesgul.lock")
+        self.destroy()
+   
     def fare_ustunde(self, event):
         # Fare uygulamanın üstüne gelince saydamlığı %95 yap (neredeyse tam net)
         self.attributes('-alpha', 0.98)
@@ -384,10 +394,14 @@ class GhostOperatorUI(ctk.CTk):
                     ekran_cevabi, 
                     flags=re.IGNORECASE
                 )
-              
-                if self.son_komut_sesli:
-                    self.konus.speak(ekran_cevabi)
 
+                def ses_bitti_tekrar_dinle():
+                    self.after(0, self.mikrofonu_otomatik_dinle)
+                if self.son_komut_sesli:
+                    self.konus.speak(ekran_cevabi, on_complete=ses_bitti_tekrar_dinle)
+                else:
+                    pass
+                
                 # GUI GÜNCELLEMELERİ THREAD GÜVENLİ HALE GETİRİLDİ
                 self.after(0, lambda: self.log_text.insert("end", f"Ghost: {ekran_cevabi}\n"))
                 self.after(0, lambda: self.log_text.see("end"))

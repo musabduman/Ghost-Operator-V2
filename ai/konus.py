@@ -20,11 +20,11 @@ class GhostSpeech:
         metin = re.sub(r'\[.*?\]', '', metin)
         return metin.strip()
 
-    def speak(self, metin):
+    def speak(self, metin, on_complete=None):
         # Arayüzün donmaması için her konuşmayı ayrı bir "işçi" (thread) yapar
-        threading.Thread(target=self._run_speech, args=(metin,), daemon=True).start()
+        threading.Thread(target=self._run_speech, args=(metin,on_complete), daemon=True).start()
 
-    def _run_speech(self, metin):
+    def _run_speech(self, metin, on_complete):
         metin = self._temizle(metin)
         if not metin or len(metin) < 1:
             return
@@ -34,6 +34,8 @@ class GhostSpeech:
             asyncio.run(self._generate_audio(metin))
             # Kaydedilen sesi çal
             self._play_audio()
+            if on_complete:
+                on_complete()
         except Exception as e:
             print(f"Ghost Konuşma Hatası: {e}")
 

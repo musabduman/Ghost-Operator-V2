@@ -6,6 +6,7 @@ import json
 import subprocess
 import os
 import time
+import pygame
 
 # İndirdiğin model klasörünün yolu
 MODEL_YOLU = "model"
@@ -29,6 +30,18 @@ def ghost_uyandir():
     # KALKAN 1: Eğer arayüz zaten açıksa (poll() None dönüyorsa çalışıyordur), yenisini açma!
     if ui_process is not None and ui_process.poll() is None:
         # Uyku halindeki sarkmaları engellemek için sadece kuyruğu boşaltıp geri dönüyoruz
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load("efendim.mp3")
+            pygame.mixer.music.play()
+            
+            while pygame.mixer.music.get_busy():
+                pygame.time.Clock().tick(10)
+        
+        except Exception as e:
+            print(f"Ses çalma hatsı: {e}")
+        
         with q.mutex:
             q.queue.clear()
         return
