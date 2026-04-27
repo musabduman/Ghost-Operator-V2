@@ -6,7 +6,7 @@ import threading
 import re
 
 class GhostSpeech:
-    def __init__(self):
+    def __init__(self, app=None):
         # Sesi burada seçiyoruz. Ahmet tok bir erkek sesi, Emel ise kadın sesidir.
         self.voice = "tr-TR-EmelNeural" 
         self.output_file = "ghost_voice.mp3"
@@ -45,6 +45,7 @@ class GhostSpeech:
 
     def _play_audio(self):
         try:
+            pygame.mixer.music.stop()
             pygame.mixer.music.load(self.output_file)
             pygame.mixer.music.play()
             # Ses bitene kadar dosyayı kilitle (çakışma olmasın)

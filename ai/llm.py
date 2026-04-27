@@ -140,7 +140,7 @@ class QwenWorker:
 class GhostController():
     def __init__(self, api_key=None): 
         self.supervisor = ChatLLM(model="gpt-oss:20b-cloud") 
-        self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
+        self.worker = QwenWorker(model="gpt-oss:120b-cloud")
     
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")

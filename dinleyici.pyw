@@ -74,7 +74,7 @@ def ghost_uyandir():
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            pygame.mixer.music.load("sistem_aktif.mp3") 
+            pygame.mixer.music.load("sistem_baslangic.mp3") 
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():
                 pygame.time.Clock().tick(10)
