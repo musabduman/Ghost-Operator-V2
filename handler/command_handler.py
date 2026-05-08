@@ -239,7 +239,7 @@ class CommandHandler:
         self.app.log(f"SİSTEM: '{name}' başlatılıyor...", "green")
         
         # İşletim sistemine göre yollar ve komutlar
-        if sys.platform == "win32":
+        if sys.platform.startswith("win"):
             # Windows yolları (dum4n yerine genel kullanıcı dizini ~ kullanıldı)
             SPECIAL = {
                 "cursor": os.path.expanduser(r"~\AppData\Local\Programs\cursor\Cursor.exe"),    
@@ -257,7 +257,7 @@ class CommandHandler:
                     os.system(f"start {name}")
             except Exception as e:
                 self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
-    
+        
         elif sys.platform.startswith("linux"):
             # Zorin OS / Linux için komutlar
             SPECIAL = {
