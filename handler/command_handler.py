@@ -5,23 +5,27 @@ UI'a dokunmaz; sadece app.log() ve app.set_model_label() kullanır.
 """
 import os
 import re
+import sys
+import time
 import traceback
 import threading
+import queue
+import subprocess   
 
 from hafıza.rag_hafıza import Bellek
 from ai.llm import GhostController, ChatLLM
-from patterns import PATTERNS
+from handler.patterns import PATTERNS
 from kontrol.spotify import SpotifyManager
 from kontrol.güvenlik import guvenlik_kontrolu
-from fs import (
+from kontrol.kontrol import google_arama
+from core.planner import PlannerAgent
+from core.fs import (
     akilli_yol_cozucu, alternatif_yol_bul, derin_arama, kodu_calistir
 )
-from kontrol.kontrol import google_arama
  
 KAPANIŞ_KELİMELERİ = ["uyku modu", "teşekkürler ghost", "kapan", "çıkış yap", "görüşürüz"]
  
 MAX_DEPTH = 2
- 
  
 class CommandHandler:
  
@@ -31,6 +35,10 @@ class CommandHandler:
         self.bellek = Bellek()
         self.controller = GhostController()
         self.spotify = SpotifyManager()
+        self.planner = PlannerAgent()
+        self.islem_kuyrugu = queue.Queue()
+        self.su_an_mesgul = False  
+
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
  
     def handle(self, event=None):
@@ -52,7 +60,7 @@ class CommandHandler:
         self.app.set_model_label("Aktif Zeka: Yönlendiriliyor...")
  
         threading.Thread(
-            target=lambda: self._process(user_input, depth=0),
+            target=lambda: self._plan_and_execute(user_input),
             daemon=True
         ).start()
  
@@ -70,6 +78,7 @@ class CommandHandler:
             self.app.log(f"Ghost: {cevap}")
             self.app.konus.speak(cevap)
             self.app.after(0, self.app.voice_handler.start_listening)
+ 
         except Exception as e:
             self.app.log(f"SİSTEM HATA (Uyanış): {e}", "red")
  
@@ -158,7 +167,49 @@ class CommandHandler:
     def _update_model_label(self, model: str):
         color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
         self.app.set_model_label(f"Aktif Zeka: {model}", color)
- 
+    
+    # ── Planlama ve Yürütme ──────────────────────────────────────────────
+    
+    def _plan_and_execute(self, user_input: str):
+        self.app.log("SİSTEM: Görev analiz ediliyor (Planlama Modu)...", "green")
+        self.app.set_model_label("Aktif Zeka: Planlayıcı Düşünüyor...")
+        
+        adimlar = self.planner.plan_olustur(user_input)
+        
+        self.app.log(f"SİSTEM: Operasyon planlandı. ({len(adimlar)} Adım)", "green")
+        
+        # 1. Bütün adımları kuyruğa diz (Eski direkt _process çağrısını siliyoruz)
+        for adim in adimlar:
+            self.islem_kuyrugu.put(adim)
+            
+        # 2. Eğer arkada çalışan bir işçi yoksa, işçiyi (thread'i) uyandır
+        if not self.su_an_mesgul:
+            threading.Thread(target=self._kuyruk_tuketici, daemon=True).start()
+
+    # ── İşelem sırası ──────────────────────────────────────────────
+
+    def _kuyruk_tuketici(self):
+        """Kuyruktaki görevleri sırayla, birbirini ezmeden çalıştıran motor."""
+        self.su_an_mesgul = True
+        toplam_adim = self.islem_kuyrugu.qsize()
+        mevcut_adim = 1
+
+        while not self.islem_kuyrugu.empty():
+            görev = self.islem_kuyrugu.get() # Sıradaki görevi al
+            
+            self.app.log(f"\n[AŞAMA {mevcut_adim}/{toplam_adim} Başlıyor...]", "green")
+            
+            # Görevi process'e gönder (Senkron çalışmalı, thread açmadan)
+            gelişmiş_komut = f"GİZLİ SİSTEM BİLGİSİ: Şu görevi SADECE uygun etiketle yerine getir: {görev}"
+            self._process(gelişmiş_komut, depth=0)
+
+            self.islem_kuyrugu.task_done()
+            mevcut_adim += 1
+            
+        self.su_an_mesgul = False
+        self.app.log("\nSİSTEM: Tüm operasyon başarıyla tamamlandı. Nöbete dönüldü.", "green")
+        self.app.set_model_label("Aktif Zeka: Bekliyor...")
+
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
  
     def _handle_open_folder(self, response: str) -> bool:
@@ -183,17 +234,44 @@ class CommandHandler:
         m = PATTERNS["uygulama_ac"].search(response)
         if not m:
             return False
+            
         name = m.group(1).strip().lower()
         self.app.log(f"SİSTEM: '{name}' başlatılıyor...", "green")
-        SPECIAL = {
-            "cursor":   r"C:\Users\dum4n\AppData\Local\Programs\cursor\Cursor.exe",
-            "whatsapp": "whatsapp://",
-            "discord":  r"C:\Users\dum4n\AppData\Local\Discord\Update.exe --processStart Discord.exe",
-        }
-        try:
-            os.startfile(SPECIAL[name]) if name in SPECIAL else os.system(f"start {name}")
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
+        
+        # İşletim sistemine göre yollar ve komutlar
+        if sys.platform == "win32":
+            # Windows yolları (dum4n yerine genel kullanıcı dizini ~ kullanıldı)
+            SPECIAL = {
+                "cursor": os.path.expanduser(r"~\AppData\Local\Programs\cursor\Cursor.exe"),    
+                "discord": (os.path.expanduser(r"~\AppData\Local\Discord\Update.exe") ,["--processStart", "Discord.exe"]),
+                "whatsapp": "whatsapp://"
+            }
+            try:
+                if name in SPECIAL:
+                    app = SPECIAL[name]
+                    if isinstance(app, tuple):
+                        subprocess.Popen([app[0]] + app[1])
+                    else:
+                        os.startfile(app)
+                else:
+                    os.system(f"start {name}")
+            except Exception as e:
+                self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
+    
+        elif sys.platform.startswith("linux"):
+            # Zorin OS / Linux için komutlar
+            SPECIAL = {
+                "cursor": "cursor",   # Genelde PATH içindedir veya alias atanmıştır
+                "discord": "discord",
+                "whatsapp": "whatsapp-for-linux" # veya kullandığın web wrapper
+            }
+            try:
+                # Linux'ta arkaplanda çalıştırmak için nohup veya & kullanılır
+                komut = SPECIAL.get(name, name)
+                os.system(f"nohup {komut} >/dev/null 2>&1 &")
+            except Exception as e:
+                self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
+                
         return True
  
     def _handle_play_song(self, response: str) -> bool:
@@ -209,7 +287,7 @@ class CommandHandler:
             if any(k in str(e).lower() for k in ["device", "active", "not found"]):
                 try:
                     self.spotify.play_playlist("mesela yanii")
-                    import time; time.sleep(2)
+                    time.sleep(2)
                     self.app.log(f"SİSTEM: Cihaz uyandırıldı, '{song}' açıldı.", "green")
                 except Exception as e2:
                     self.app.log(f"SİSTEM HATA: Cihaz uyandırılamadı. {e2}", "red")
@@ -272,7 +350,7 @@ class CommandHandler:
                 f"GİZLİ SİSTEM BİLGİSİ: '{path}' klasörünün içeriği: {files}\n"
                 f"Kullanıcının isteğine göre doğru dosyayı seç ve işleme devam et."
             )
-            threading.Thread(target=lambda: self._process(prompt, depth + 1), daemon=True).start()
+            self._process(prompt, depth + 1)
         else:
             self.app.log(f"SİSTEM HATA: Klasör bulunamadı → {path}", "red")
         return True
@@ -312,7 +390,7 @@ class CommandHandler:
                 f"[DOSYA_YAZ: {path}]\n<<<KOD_BASLANGIC>>>\n(kod)\n<<<KOD_BITIS>>>\n"
                 f"Sonra [KODU_CALISTIR: {path}] ile test et."
             )
-            threading.Thread(target=lambda: self._process(prompt, depth + 1), daemon=True).start()
+            self._process(prompt, depth + 1)
         else:
             self.app.log(f"SİSTEM: 2 deneme başarısız. Son hata:\n{result['hata']}", "red")
         return True
@@ -333,7 +411,7 @@ class CommandHandler:
                     f"[DOSYA_YAZ: {path}]\n<<<KOD_BASLANGIC>>>\n(yeni_kod)\n<<<KOD_BITIS>>>\n"
                     f"Sadece soru sorulduysa DOSYA_YAZ ETİKETİNİ KULLANMA, Türkçe cevapla."
                 )
-                threading.Thread(target=lambda: self._process(prompt, depth + 1), daemon=True).start()
+                self._process(prompt, depth + 1)
             except Exception as e:
                 self.app.log(f"SİSTEM HATA (Dosya Okuma): {e}", "red")
         else:
@@ -349,4 +427,5 @@ class CommandHandler:
             else:
                 self.app.log("SİSTEM HATA: Klasör yolu da geçersiz!", "red")
                 prompt = f"GİZLİ SİSTEM BİLGİSİ: '{path}' tamamen geçersiz bir yol. Kullanıcıya bildir."
-            threading.Thread(target=lambda: self._process(prompt, depth + 1), daemon=True).start()
+            
+            self._process(prompt, depth + 1)
