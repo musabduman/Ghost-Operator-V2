@@ -14,6 +14,7 @@ import subprocess
 
 from hafıza.rag_hafıza import Bellek
 from ai.llm import GhostController, ChatLLM
+from tools.google_tool import ghost_search_tool
 from handler.patterns import PATTERNS
 from kontrol.spotify import SpotifyManager
 from kontrol.güvenlik import guvenlik_kontrolu
@@ -209,6 +210,42 @@ class CommandHandler:
         self.su_an_mesgul = False
         self.app.log("\nSİSTEM: Tüm operasyon başarıyla tamamlandı. Nöbete dönüldü.", "green")
         self.app.set_model_label("Aktif Zeka: Bekliyor...")
+
+    # ── Google arama yapabilme ────────────────────────────────────────────────────
+
+    def _handle_search(self, response: str, user_input: str, depth: int) -> bool:
+        m = PATTERNS["arama"].search(response)
+        if not m:
+            return False
+            
+        query = m.group(1).strip()
+        self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
+        
+        try:
+            # 1. Aramayı yap ve sonuçları al (google_tool.py veya yazdığın araçtan dönecek)
+            # return_results=True gibi bir mantıkla veriyi geri alman lazım
+            arama_sonuclari = ghost_search_tool(query) 
+            
+            # 2. Eğer sonuç bulduysan, Ghost'a tekrar gizli bir mesaj gönder:
+            if arama_sonuclari:
+                self.app.log("SİSTEM: Veriler çekildi, Ghost sentezliyor...", "green")
+                prompt = (
+                    f"GİZLİ SİSTEM BİLGİSİ: '{query}' için internette arama yaptım ve şu sonuçları buldum:\n"
+                    f"{arama_sonuclari}\n\n"
+                    f"Şimdi bu bilgileri kullanarak kullanıcının şu sorusuna doğal, havalı ve kısa bir cevap ver: '{user_input}'. "
+                    f"KESİNLİKLE [ARAMA: ...] etiketini tekrar kullanma!"
+                )
+                # 3. Döngüyü tekrar çalıştır (Derinliği 1 artırarak)
+                self._process(prompt, depth + 1)
+            else:
+                # 4. Sonuç yoksa Ghost'a bulamadığını söyle
+                prompt = f"GİZLİ SİSTEM BİLGİSİ: İnternette arama yaptım ama sonuç bulamadım. Kullanıcıya bunu uygun dille söyle."
+                self._process(prompt, depth + 1)
+                
+        except Exception as e:
+            self.app.log(f"SİSTEM HATA (Arama): {e}", "red")
+            
+        return True
 
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
  

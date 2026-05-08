@@ -1,10 +1,14 @@
 import spotipy
+import os
 from spotipy.oauth2 import SpotifyOAuth
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- AYARLAR ---
-CLIENT_ID = "34f3acf6e935473e86e1785e9c95f60a"
-CLIENT_SECRET = "f378aa54fb0f438688c06a939f760082"
-REDIRECT_URI = "http://127.0.0.1:8888/callback" # Dashboard'daki ile birebir aynı olmalı
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+REDIRECT_URI = os.getenv("REDIRECT_URI") # Dashboard'daki ile birebir aynı olmalı
 
 # İzinler: Şarkı değiştirme, durdurma ve şu an çalanı görme
 SCOPE = "user-modify-playback-state user-read-playback-state user-read-currently-playing playlist-read-private playlist-read-collaborative"
