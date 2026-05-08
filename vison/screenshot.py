@@ -4,7 +4,7 @@ import os
 import threading
 import pytesseract
 
-from vison import groq_vision_analiz
+from vison.vison import groq_vision_analiz
 def screenshot_çek(self, kayit_yolu, soru):
     try:
         ekran = PIL.ImageGrab.grab(all_screens=True)
