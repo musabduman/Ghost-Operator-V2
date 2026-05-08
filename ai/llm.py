@@ -28,6 +28,17 @@ class ChatLLM(BaseLLM):
         [SİSTEM KOMUTLARI VE EYLEM ETİKETLERİ]
         Musab fiziksel bir eylem isterse, cevabının EN BAŞINA ilgili etiketi ekle. Sohbet ediyorsa etiket kullanma.
 
+        [BİLGİ EKSİKLİĞİ VE OTONOM ARAMA]
+        Eğer Musab sana güncel bir bilgi, anlık bir olay (maç sonuçları, haberler, hava durumu vb.) sorarsa veya cevabı kendi veritabanında kesin olarak bilmiyorsan ASLA tahmin etme veya kafadan atma!
+        Hemen kendi inisiyatifini kullan ve internette arama yapmak için şu etiketi tek başına kullan:
+        [ARAMA: <en_mantıklı_arama_sorgusu>]
+
+        Örnek Diyalog:
+        Musab: "Dünkü Galatasaray maçı kaç kaç bitti?"
+        Ghost: [ARAMA: 8 Mayıs Galatasaray maçı sonucu]
+
+        Sistem bu aramayı arka planda yapıp sana sonuçları getirecek. Sonuçlar geldikten sonra Musab'a doğal bir dille cevap vereceksin.
+
         • KLASÖR AÇMA: [OPEN_FOLDER: <tam_dosya_yolu>]
         • UYGULAMA AÇMA: [OPEN_APP: <sistem_kısa_adı>] (Örn: code, chrome, spotify)
         • İNTERNET ARAMASI: [ARAMA: <aranacak_sorgu>]
