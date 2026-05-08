@@ -6,13 +6,13 @@ import customtkinter as ctk
 import threading
 import pygame
 
-from voice_handler import VoiceHandler
-from widgets import build_log_box, build_entry, build_media_buttons, build_screenshot_button
-from command_handler import CommandHandler
+from handler.voice_handler import VoiceHandler
+from ui.ui import build_log_box, build_entry, build_media_buttons, build_screenshot_button
+from handler.command_handler import CommandHandler
 from ai.konus import GhostSpeech
 from hafıza.rag_hafıza import Bellek
 from kontrol.spotify import SpotifyManager
-from signal_watcher import SignalWatcher
+from uyandırma.signal_watcher import SignalWatcher
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")

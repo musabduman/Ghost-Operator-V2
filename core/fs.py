@@ -5,7 +5,7 @@ UI'dan tamamen bağımsız, test edilebilir fonksiyonlar.
 import os
 import difflib
 import subprocess
-
+import sys
 
 def akilli_yol_cozucu(raw: str) -> str:
     """Ghost'un verdiği hatalı/eksik yolu gerçek yola dönüştürür."""
@@ -61,7 +61,7 @@ def kodu_calistir(path: str) -> dict:
     """Python dosyasını çalıştırır; sonucu dict olarak döndürür."""
     try:
         result = subprocess.run(
-            ["python", path],
+            [sys.executable, path],
             capture_output=True,
             text=True,
             timeout=15,
