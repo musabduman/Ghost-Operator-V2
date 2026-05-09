@@ -5,19 +5,30 @@ import hashlib
 
 class Bellek:
     def __init__(self, collection_name="bellek"):
-        db_path = os.path.join(os.path.expanduser("~"), "Masaüstü", "Ghost_Memory", "VektorDB")
+        # HATA DÜZELTİLDİ: "Masaüstü" yerine "Desktop" kullanıldı.
+        db_path = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection_name = collection_name
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
 
     def bellege_yaz(self, metin):
-        embedding = ollama.embeddings(model="nomic-embed-text", prompt=metin)["embedding"]
-        metin_hash = hashlib.md5(metin.encode()).hexdigest()
-        self.collection.add(
-            documents=[metin],
-            embeddings=[embedding],
-            ids=[metin_hash]
-        )
+        # Güvenlik Önlemi: Boş metin geldiyse sistemi yorma, işlemi iptal et
+        if not metin or not metin.strip():
+            return 
+            
+        try:
+            embedding = ollama.embeddings(model="nomic-embed-text", prompt=metin)["embedding"]
+            metin_hash = hashlib.md5(metin.encode("utf-8")).hexdigest()
+            
+            # HATA DÜZELTİLDİ: add yerine upsert kullanıldı (Aynı not gelirse çökmeyi engeller)
+            self.collection.upsert(
+                documents=[metin],
+                embeddings=[embedding],
+                ids=[metin_hash]
+            )
+        except Exception as e:
+            # İşlem başarısız olursa arka planda neyin patladığını terminale yazdır
+            print(f"[SİSTEM UYARISI] Belleğe yazma başarısız: {e}")
 
     def sorgula(self, soru, limit=3):
         try:
@@ -32,4 +43,5 @@ class Bellek:
             return []
         
         except Exception as e:
+            print(f"[SİSTEM UYARISI] Bellek sorgusu başarısız: {e}")
             return []

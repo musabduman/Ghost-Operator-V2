@@ -10,7 +10,10 @@ class PlannerAgent:
             Kullanıcının isteğini analiz et ve görevin karmaşıklığına göre SADECE 0 veya 1 ile cevap ver.
 
             KURAL 1: İstek tek bir adımla çözülebilecek basit bir eylemse (örn: müzik aç, google'da ara, klasör aç) SADECE "0" yaz. Başka hiçbir harf veya kelime kullanma.
+            
             KURAL 2: Eğer çok adımlı, araştırma ve düzeltme gerektiren karmaşık bir görevse (örn: "klasörü incele, main.py'yi bul, oku ve hatayı düzelt"), ilk satıra "1" yaz. Sonraki satırlarda her bir adımı "ADIM: <görev>" formatında listele.
+            
+            KURAL 3 (ÇOK ÖNEMLİ): Bir dosya oluşturmak ve içine kod/metin yazmak İKİ AYRI ADIM DEĞİLDİR. Eğer kullanıcı "X dosyası oluştur ve içine Y yaz" diyorsa, bunu KESİNLİKLE tek bir adımda birleştir (Örn: "ADIM: X dosyasını oluşturup içine Y kodunu yaz"). Asla "dosyayı oluştur" ve "kodu yaz" diye ikiye bölme!
 
             Kullanıcı İsteği: {user_input}
 
