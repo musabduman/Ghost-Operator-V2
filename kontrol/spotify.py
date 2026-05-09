@@ -3,7 +3,10 @@ import os
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
-load_dotenv()
+# .env dosyasının tam yolunu gösteriyoruz ki CWD neresi olursa olsun bulabilsin
+env_path = r"C:\Users\dum4n\Desktop\vs.code\asistan\apı_key.env"
+
+load_dotenv(dotenv_path=env_path)
 
 # --- AYARLAR ---
 CLIENT_ID = os.getenv("CLIENT_ID")

@@ -86,7 +86,50 @@ class GhostOperatorUI(ctk.CTk):
             self.log_text.insert("end", text + "\n", tag)
             self.log_text.see("end")
         self.after(0, _write)
+    
+    def log_collapsible_plan(self, adimlar: list):
+        """Çok adımlı görevleri gizlenebilir bir buton ile ekrana basar."""
+        def _build():
+            import time
+            # Her plana benzersiz bir ID veriyoruz ki butonlar karışmasın
+            tag_name = f"plan_{int(time.time() * 1000)}"
+            
+            # Bu tag'e sahip metinleri başlangıçta gizle (elide=True) ve rengini loş yap
+            self.log_text.tag_config(tag_name, elide=True, foreground="#888888")
+            
+            # Durum tutucu (gizli mi açık mı?)
+            state = {"hidden": True}
+            
+            def toggle():
+                state["hidden"] = not state["hidden"]
+                self.log_text.tag_config(tag_name, elide=state["hidden"])
+                btn.configure(text="▼ Düşünme sürecini gizle" if not state["hidden"] else "▶ Düşünme sürecini göster")
+                self.log_text.see("end")
 
+            # Metin kutusunun içine gömülecek şık buton
+            btn = ctk.CTkButton(
+                self.log_text, 
+                text="▶ Düşünme sürecini göster", 
+                command=toggle,
+                width=180, height=20,
+                fg_color="transparent", hover_color="#2a2a2a", text_color="#aaaaaa",
+                font=("Consolas", 11, "italic"),
+                anchor="w" # Sola hizalı
+            )
+            
+            # Butonu ve gizli adımları ekrana yaz
+            self.log_text.insert("end", "\n")
+            self.log_text.window_create("end", window=btn)
+            self.log_text.insert("end", "\n")
+            
+            for i, adim in enumerate(adimlar, 1):
+                prefix = "   └─" if i == len(adimlar) else "   ├─"
+                self.log_text.insert("end", f"{prefix} Adım {i}: {adim}\n", tag_name)
+            
+            self.log_text.see("end")
+            
+        self.after(0, _build)
+    
     def set_model_label(self, text: str, color: str = "#888888"):
         self.after(0, lambda: self.model_label.configure(text=text, text_color=color))
 

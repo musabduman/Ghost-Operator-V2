@@ -114,7 +114,7 @@ class CommandHandler:
             action_taken |= self._handle_open_app(response)
             action_taken |= self._handle_play_song(response)
             action_taken |= self._handle_play_playlist(response)
-            action_taken |= self._handle_search(response)
+            action_taken |= self._handle_search(response, user_input,depth)
             action_taken |= self._handle_save_note(response)
             action_taken |= self._handle_make_folder(response)
             action_taken |= self._handle_inspect_folder(response, user_input, depth)
@@ -172,13 +172,15 @@ class CommandHandler:
     # ── Planlama ve Yürütme ──────────────────────────────────────────────
     
     def _plan_and_execute(self, user_input: str):
-        self.app.log("SİSTEM: Görev analiz ediliyor (Planlama Modu)...", "green")
         self.app.set_model_label("Aktif Zeka: Planlayıcı Düşünüyor...")
         
         adimlar = self.planner.plan_olustur(user_input)
         
         self.app.log(f"SİSTEM: Operasyon planlandı. ({len(adimlar)} Adım)", "green")
         
+        if len(adimlar) > 1:
+            self.app.log_collapsible_plan(adimlar)
+
         # 1. Bütün adımları kuyruğa diz (Eski direkt _process çağrısını siliyoruz)
         for adim in adimlar:
             self.islem_kuyrugu.put(adim)
@@ -192,23 +194,17 @@ class CommandHandler:
     def _kuyruk_tuketici(self):
         """Kuyruktaki görevleri sırayla, birbirini ezmeden çalıştıran motor."""
         self.su_an_mesgul = True
-        toplam_adim = self.islem_kuyrugu.qsize()
-        mevcut_adim = 1
 
         while not self.islem_kuyrugu.empty():
             görev = self.islem_kuyrugu.get() # Sıradaki görevi al
-            
-            self.app.log(f"\n[AŞAMA {mevcut_adim}/{toplam_adim} Başlıyor...]", "green")
-            
+             
             # Görevi process'e gönder (Senkron çalışmalı, thread açmadan)
             gelişmiş_komut = f"GİZLİ SİSTEM BİLGİSİ: Şu görevi SADECE uygun etiketle yerine getir: {görev}"
             self._process(gelişmiş_komut, depth=0)
 
             self.islem_kuyrugu.task_done()
-            mevcut_adim += 1
             
         self.su_an_mesgul = False
-        self.app.log("\nSİSTEM: Tüm operasyon başarıyla tamamlandı. Nöbete dönüldü.", "green")
         self.app.set_model_label("Aktif Zeka: Bekliyor...")
 
     # ── Google arama yapabilme ────────────────────────────────────────────────────
@@ -345,15 +341,6 @@ class CommandHandler:
             self.app.log(f"SİSTEM HATA (Spotify): {e}", "red")
         return True
  
-    def _handle_search(self, response: str) -> bool:
-        m = PATTERNS["arama"].search(response)
-        if not m:
-            return False
-        query = m.group(1).strip()
-        google_arama(query)
-        self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
-        return True
- 
     def _handle_save_note(self, response: str) -> bool:
         m = PATTERNS["not_al"].search(response)
         if not m:
@@ -397,8 +384,8 @@ class CommandHandler:
         if not m:
             return False
         raw_path = m.group(1).strip()
-        path     = os.path.normpath(raw_path)
-        code     = m.group(2).strip()
+        path = akilli_yol_cozucu(raw_path)
+        code = m.group(2).strip()
         try:
             folder = os.path.dirname(path)
             if folder:
