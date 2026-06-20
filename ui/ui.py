@@ -19,7 +19,7 @@ def build_log_box(parent) -> ctk.CTkTextbox:
  
 def build_entry(parent) -> ctk.CTkEntry:
     return ctk.CTkEntry(
-        parent,
+        parent,# sa
         placeholder_text="Patrondan komut bekliyor...",
         width=340, height=40,
         font=("Consolas", 14),
