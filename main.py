@@ -17,7 +17,7 @@ from uyandırma.signal_watcher import SignalWatcher
 from ui.compact_ui import build_compact
 from ui.expanded_ui import build_expanded, append_chat_bubble
 from sessions.session_manager import (
-    new_session_id, save_session, load_session, list_sessions, _populate_sessions
+    new_session_id, save_session, load_session, list_sessions
 )
 
 ctk.set_appearance_mode("dark")
