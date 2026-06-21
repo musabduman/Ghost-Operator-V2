@@ -1,0 +1,16 @@
+{
+  "id": "2026-06-21_120411",
+  "title": "selam naber",
+  "messages": [
+    {
+      "role": "user",
+      "text": "selam naber",
+      "ts": 1782032679
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782032679
+    }
+  ]
+}

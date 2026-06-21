@@ -1,0 +1,16 @@
+{
+  "id": "2026-06-21_130034",
+  "title": "selam",
+  "messages": [
+    {
+      "role": "user",
+      "text": "selam",
+      "ts": 1782036058
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782036058
+    }
+  ]
+}

@@ -47,7 +47,7 @@ def _build_sidebar(app, parent):
     # Başlık
     ctk.CTkLabel(
         sidebar, text="GHOST OPERATOR",
-        font=("Consolas", 13, "bold"), text_color="#3a3a3a"
+        font=("Consolas", 13, "bold"), text_color="#888888"
     ).grid(row=0, column=0, padx=12, pady=(14, 6), sticky="w")
 
     # Yeni Sohbet butonu
@@ -114,13 +114,13 @@ def _populate_sessions(app, frame):
         ctk.CTkLabel(
             text_frame, text=title,
             font=FONT_SMALL,
-            text_color=CLR_ACCENT if is_active else "#555555",
+            text_color=CLR_ACCENT if is_active else "#aaaaaa",
             anchor="w", wraplength=140
         ).pack(anchor="w", padx=4)
 
         ctk.CTkLabel(
             text_frame, text=date_str,
-            font=("Consolas", 10), text_color="#2a3a2a" if is_active else "#2a2a2a",
+            font=("Consolas", 10), text_color="#2a3a2a" if is_active else "#666666",
             anchor="w"
         ).pack(anchor="w", padx=4)
 
@@ -152,20 +152,20 @@ def _build_topbar(app, parent):
                        border_width=0)
     bar.grid(row=0, column=0, sticky="ew", padx=0)
     bar.grid_columnconfigure(1, weight=1)
-
+    """
     ctk.CTkLabel(
         bar, text="GHOST OPERATOR  v2",
         font=("Consolas", 15, "bold"), text_color="#3a3a3a"
     ).grid(row=0, column=0, padx=16, pady=10)
-
+    """
     app.model_label = ctk.CTkLabel(
         bar, text="Aktif Zeka: Bekliyor...",
-        font=("Consolas", 11, "italic"), text_color="#555555"
+        font=("Consolas", 11, "italic"), text_color="#aaaaaa"
     )
     app.model_label.grid(row=0, column=1, padx=8)
 
     # Sağ: ekran yorumla
-    app.ss_button = build_screenshot_button(app)
+    app.ss_button = build_screenshot_button(bar)
     app.ss_button.configure(width=180, height=28, font=("Consolas", 11))
     app.ss_button.grid(row=0, column=2, padx=12)
 
@@ -189,7 +189,7 @@ def _build_toolbar(app, parent):
     BTN = dict(
         font=("Consolas", 11), height=24,
         fg_color="transparent", hover_color="#1a1a1a",
-        text_color="#444444", border_width=1, border_color="#1e1e1e"
+        text_color="#aaaaaa", border_width=1, border_color="#1e1e1e"
     )
     from kontrol.kontrol import muzik_kontrol
     ctk.CTkButton(bar, text="⏮", width=32, command=lambda: muzik_kontrol("önceki"), **BTN).pack(side="left", padx=(8, 2), pady=6)
