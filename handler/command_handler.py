@@ -50,14 +50,14 @@ class CommandHandler:
             return
  
         if any(k in user_input.lower() for k in KAPANIŞ_KELİMELERİ):
-            self.app.log(f"\nSen: {user_input}")
-            self.app.log("Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.", "green")
+            self.app.record_message(f"\nSen: {user_input}")
+            self.app.record_message("Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.", "green")
             self.app.after(2000, self.app.destroy)
             return
  
-        self.app.log(f"\nSen: {user_input}")
+        self.app.record_message("user", user_input)
         self.app.entry.delete(0, "end")
-        self.app.log("Ghost düşünüyor...")
+        self.app.record_message("Ghost", "Düşünüyor...")
         self.app.set_model_label("Aktif Zeka: Yönlendiriliyor...")
  
         threading.Thread(
@@ -76,7 +76,7 @@ class CommandHandler:
         try:
             cevap, model = self.controller(prompt)
             self._update_model_label(model)
-            self.app.log(f"Ghost: {cevap}")
+            self.app.record_message("ghost" ,cevap)
             self.app.konus.speak(cevap)
             self.app.after(0, self.app.voice_handler.start_listening)
  
@@ -97,7 +97,7 @@ class CommandHandler:
             self._update_model_label(model)
  
             display = self._clean_response_for_display(response)
-            self.app.log(f"Ghost: {display}")
+            self.app.record_message("ghost" ,display)
  
             if self.son_komut_sesli:
                 self.app.konus.speak(
