@@ -5,3 +5,4 @@ __pycache__/
 ai.__pycache__/
 Desktop/
 apı_key.env
+.env
