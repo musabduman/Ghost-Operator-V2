@@ -1,0 +1,19 @@
+edge-tts
+pygame
+chromadb
+ollama
+sounddevice
+scipy
+SpeechRecognition
+webbrowser; python_version<'3.0' # Genellikle built-in gelir ama güvende kalsın
+keyboard
+spotipy
+python-dotenv
+requests
+duckduckgo_search
+trafilatura
+customtkinter
+vosk
+Pillow
+pytesseract
+groq
