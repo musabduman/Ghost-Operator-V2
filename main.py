@@ -37,6 +37,9 @@ class GhostOperatorUI(ctk.CTk):
         self._messages: list = []          # aktif oturumdaki mesajlar
         self._expanded = False             # şu an hangi modda?
 
+        # __ Konuşma durumu  _________________________________
+        self.voice_mode = False
+
         # ── Handler'lar ───────────────────────────────────────────────────────
         self.command_handler = CommandHandler(self)
         self.konus           = GhostSpeech(self)
@@ -53,10 +56,6 @@ class GhostOperatorUI(ctk.CTk):
         self.after(500, self.signal_watcher.start)
         self._create_lock()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        # __ Konuşma durumu  _________________________________
-        self.voice_mode = False
-
 
     # ── Pencere ───────────────────────────────────────────────────────────────
 
@@ -130,7 +129,7 @@ class GhostOperatorUI(ctk.CTk):
         self._messages = data.get("messages", [])
         
         if hasattr(self, "command_handler") and hasattr(self.command_handler.controller,"supervisor"):
-            self.command_handler.controller.supervisor.load_history(self,self._messages)
+            self.command_handler.controller.supervisor.load_history(self._messages)
 
         if self._expanded:
             from ui.expanded_ui import _populate_sessions

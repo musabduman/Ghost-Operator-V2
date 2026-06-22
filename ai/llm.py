@@ -112,12 +112,12 @@ class ChatLLM(BaseLLM):
             "options": {"temperature": 0.4, "num_ctx": 4096}
         }
         try:
-            response = requests.post(self.api_url, json=payload)
+            response = requests.post(self.api_url, json=payload, timeout=60)
             response.raise_for_status() 
             res = response.json()["message"]["content"].strip()
             self.mesaj_gecmisi.append({"role": "assistant", "content": res})
-            if len(self.mesaj_gecmisi) > 12:
-                self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-5:]
+            if len(self.mesaj_gecmisi) > 20:
+                self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-10:]
             return res
         except Exception as e:
             self.mesaj_gecmisi.pop()
@@ -148,7 +148,7 @@ class QwenWorker:
             "options": {"temperature": 0.1}
         }
         try:
-            response = requests.post(self.api_url, json=payload)
+            response = requests.post(self.api_url, json=payload, timeout=60)
             response.raise_for_status() 
             saf_kod = response.json()["message"]["content"].strip()
             
