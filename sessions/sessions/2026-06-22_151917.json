@@ -1,0 +1,26 @@
+{
+  "id": "2026-06-22_151917",
+  "title": "selam naber",
+  "messages": [
+    {
+      "role": "ghost",
+      "text": "Efendim.",
+      "ts": 1782130765
+    },
+    {
+      "role": "user",
+      "text": "selam naber",
+      "ts": 1782130767
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782130767
+    },
+    {
+      "role": "ghost",
+      "text": "Efendim.",
+      "ts": 1782130784
+    }
+  ]
+}
