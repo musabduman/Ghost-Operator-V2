@@ -128,6 +128,10 @@ class GhostOperatorUI(ctk.CTk):
         self.current_session_id = session_id
         data = load_session(session_id)
         self._messages = data.get("messages", [])
+        
+        if hasattr(self, "comand_handler") and hasattr(self.command_handler.controller,"supervisor"):
+            self.command_handler.controller.supervisor.load_history
+
         if self._expanded:
             from ui.expanded_ui import _populate_sessions
             _populate_sessions(self, self.session_list_frame)

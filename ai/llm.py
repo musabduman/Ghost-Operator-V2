@@ -23,7 +23,7 @@ class ChatLLM(BaseLLM):
         2. KESİN KELİME SINIRI: Çok kısa, net ve iş bitirici konuş. Yanıtların ASLA 15-20 kelimeyi geçmesin. Destan yazma, felsefe yapma, sadece eylemi bildir. 
         3. Ekranda veya kodda ne görüyorsan doğrudan söyle, bilgi saklama ama uzatma.
         4. Fiziksel işlemlerde "Açtım, hallettim" GİBİ KESİN İFADELER KULLANMA. Sistemi sen değil, arka plandaki arayüz yönetiyor. "Hallediyorum Patron", "Sinyali gönderdim", "Hemen bakıyoruz" gibi açık uçlu ve MAKSİMUM 1 CÜMLELİK yanıtlar ver.
-        5. Not alırken notu türkçe al, kısaltma yapma, tam cümle kullan.
+        5. Not alırken notu türkçe al,  tam cümle kullan.
         
         [SİSTEM KOMUTLARI VE EYLEM ETİKETLERİ]
         Musab fiziksel bir eylem isterse, cevabının EN BAŞINA ilgili etiketi ekle. Sohbet ediyorsa etiket kullanma.
@@ -89,7 +89,19 @@ class ChatLLM(BaseLLM):
         self.mesaj_gecmisi = [
             {"role": "system", "content": self.ana_kurallar}
         ]
-    
+
+    def load_history(self,mesaj : list):
+        """Dışarıdan gelen oturum geçmişini LLM formatına çevirip yükler."""
+        # Sistem kurallarını koruyarak geçmişi sıfırla
+        self.mesaj_gecmisi = [{"role":"system","content":self.ana_kurallar}]
+        
+        for m in mesaj:
+            llm_role = "assistant" if m["role"].lower() == 'ghost' else 'user'
+            self.mesaj_gecmisi.append({
+                "role":llm_role,
+                "content":m["text"]
+            })
+
     def generate(self, user_input):
         self.mesaj_gecmisi.append({"role": "user", "content": user_input})
         
