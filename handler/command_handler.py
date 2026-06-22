@@ -61,10 +61,39 @@ class CommandHandler:
         self.app.set_model_label("Aktif Zeka: Yönlendiriliyor...")
  
         threading.Thread(
-            target=lambda: self._plan_and_execute(user_input),
+            target=self._orchestrate_task,
+            args=(user_input),
             daemon=True
         ).start()
- 
+    
+    def _orchestrate_task(self, user_input):
+        """Hızlı onay ve ağır planlama işlemlerini AYNI ANDA paralel başlatır."""
+        # 1. Hızlı Onay (Ön-mesaj) motorunu ayrı bir koldan ateşle
+        threading.Thread(target=self._quick_ack, args=(user_input,), daemon=True).start()
+        
+        # 2. HİÇ BEKLEMEDEN (Paralel olarak) ağır planlama motorunu ana koldan ateşle
+        self._plan_and_execute(user_input)
+
+    def _quick_ack(self, user_input):
+        """Claude'un temiz yapısı: Sadece ön-mesajı üretir ve seslendirir."""
+        self.app.set_model_label("Aktif Zeka: Operasyon Başlıyor...")
+        on_mesaj_prompt = (
+            f"GİZLİ SİSTEM BİLGİSİ: Kullanıcı senden şu işi istedi: '{user_input}'. "
+            f"Sen şu an arka planda bu işin planlamasını ve hazırlığını yapıyorsun. "
+            f"Kullanıcıya süreci devraldığını ve çalışmaya başladığını belirten ÇOK KISA, havalı ve samimi bir cümle kur. "
+            f"(Örn: 'Hemen hallediyorum Patron.', 'Sistemleri tarıyorum, arkana yaslan.') "
+            f"SADECE cümleyi yaz, asla etiket kullanma."
+        )
+        try:
+            on_mesaj, _ = self.controller(on_mesaj_prompt)
+            self.app.record_message("ghost", on_mesaj)
+            
+            # Sadece konuş, bittikten sonra bir şey tetiklemene gerek yok çünkü plan zaten arkada çalışıyor!
+            if self.app.voice_mode:
+                self.app.konus.speak(on_mesaj)
+        except Exception as e:
+            self.app.log(f"SİSTEM HATA (Ön-Mesaj): {e}", "red")
+
     def run_startup(self):
         """Uyanış cümlesi + ilk dinleme döngüsünü başlatır."""
         prompt = (
