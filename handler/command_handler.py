@@ -85,7 +85,7 @@ class CommandHandler:
  
     # ── Ana işleme döngüsü ────────────────────────────────────────────────────
  
-    def _process(self, user_input: str, depth: int = 0, on_done: threading.Event = None):
+    def _process(self, user_input: str, depth: int = 0, on_done: threading.Event = None, is_background : bool = False):
         if depth > MAX_DEPTH:
             self.app.log("SİSTEM: Maksimum döngü derinliğine ulaşıldı.", "red")
             if on_done:
@@ -100,14 +100,22 @@ class CommandHandler:
             self._update_model_label(model)
  
             display = self._clean_response_for_display(response)
-            self.app.record_message("ghost" ,display)
- 
-            if self.app.voice_mode:
-                self.app.konus.speak(
-                    display,
-                    on_complete=lambda: self.app.after(800, self.app.voice_handler.start_listening)
-                )
- 
+            if display:
+                if is_background:
+                    #Arka plan işlemlerini chat balonuna atma, sadece gizlice loga bas
+                    self.app.log(f"SİSTEM (Arka Plan Sesli Düşünce): {display}", "green")
+                else:
+                    # Final adımı! Chat balonuna yaz ve seslendir
+                    self.app.record_message("ghost" ,display)
+                    if self.app.voice_mode:
+                        self.app.konus.speak(
+                            display,
+                            on_complete=lambda: self.app.after(800, self.app.voice_handler.start_listening)
+                        )
+            else:
+                if not is_background and self.app.voice_mode:
+                    self.app.after(800, self.app.voice_handler.start_listening)
+                    
             if not guvenlik_kontrolu(user_input):
                 self.app.log("SİSTEM: Tehlikeli komut algılandı! İşlem reddedildi.", "red")
                 return
@@ -132,7 +140,7 @@ class CommandHandler:
         finally:
             if on_done:
                 on_done.set()
-                
+
     # ── Bellek zenginleştirme ─────────────────────────────────────────────────
     def _enrich_with_memory(self, user_input: str) -> str:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
@@ -155,6 +163,7 @@ class CommandHandler:
  
     @staticmethod
     def _clean_response_for_display(response: str) -> str:
+        # 1. Mühendis kod bloklarını şık ikonlara çevir
         result = re.sub(
             r'\[.*?KOD_BASLANGIC>>>.*?<<<KOD_BITIS>>>',
             '[⚙️ Kod dosyaya yazılıyor...]',
@@ -167,8 +176,17 @@ class CommandHandler:
             result,
             flags=re.IGNORECASE,
         )
-        return result
- 
+
+        # 2. Arka plan sistem etiketlerini tamamen yok et (örn: [OPEN_APP: chrome])
+        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ):.*?\]'
+        result = re.sub(etiketler, '', result, flags=re.IGNORECASE)
+        
+        # 3. Planlayıcının ürettiği boş/sessiz hedefleri ([TASARIM], [KONTEKST_BELİR]) sil
+        result = re.sub(r'\[[A-Z_İĞÜŞÖÇ]+\]', '', result)
+        
+        # Geriye sadece tertemiz muhabbet kalır
+        return result.strip()
+        
     # ── Model label güncellemesi ──────────────────────────────────────────────
  
     def _update_model_label(self, model: str):
@@ -189,7 +207,7 @@ class CommandHandler:
 
         # 1. Bütün adımları kuyruğa diz (Eski direkt _process çağrısını siliyoruz)
         for adim in adimlar:
-            self.islem_kuyrugu.put(adim)
+            self.islem_kuyrugu.put((adim,user_input))
             
         # 2. Eğer arkada çalışan bir işçi yoksa, işçiyi (thread'i) uyandır
         if not self.su_an_mesgul:
@@ -197,20 +215,33 @@ class CommandHandler:
 
     # ── İşelem sırası ──────────────────────────────────────────────
 
+
     def _kuyruk_tuketici(self):
-        """Kuyruktaki görevleri sırayla, birbirini ezmeden çalıştıran motor."""
+        """Kuyruktaki görevleri sırayla çalıştıran motor."""
         self.su_an_mesgul = True
 
         while not self.islem_kuyrugu.empty():
-            görev = self.islem_kuyrugu.get() # Sıradaki görevi al
-             
-            tamamlandi = threading.Event()
+            görev, original_input = self.islem_kuyrugu.get()
             
-            # Görevi process'e gönder (Senkron çalışmalı, thread açmadan)
-            gelişmiş_komut = f"GİZLİ SİSTEM BİLGİSİ: Şu görevi SADECE uygun etiketle yerine getir: {görev}"
-            self._process(gelişmiş_komut, depth=0)
-
-            tamamlandi.wait(timeout=60)
+            # Queue.get() elemanı sildiği için, boşsa son adımdır!
+            is_last_step = self.islem_kuyrugu.empty() 
+             
+            if is_last_step:
+                # SON ADIM: Ghost'un ağzındaki bandı söküyoruz, konuşsun!
+                gelişmiş_komut = (
+                    f"GİZLİ SİSTEM BİLGİSİ: Kullanıcının sana asıl sorusu şuydu: '{original_input}'.\n"
+                    f"Arka plan planlamasının SON aşamasındayız. Şu anki Görev: '{görev}'.\n"
+                    f"Eğer eylem gerekiyorsa uygun [ETİKET] ile eylemi yap, ARDINDAN doğrudan "
+                    f"kullanıcının asıl sorusunu yanıtlayacak şekilde doğal, samimi ve havalı bir sohbet cümlesi kur."
+                )
+                self._process(gelişmiş_komut, depth=0, is_background=False)
+            else:
+                # ARA ADIM: Sessiz ol, gevezelik yapma, sadece etiketi bas
+                gelişmiş_komut = (
+                    f"GİZLİ SİSTEM BİLGİSİ: Arka planda şu görevi yapıyorsun: '{görev}'. "
+                    f"SADECE ve SADECE gerekli eylem etiketini kullan. HİÇBİR sohbet veya açıklama metni yazma."
+                )
+                self._process(gelişmiş_komut, depth=0, is_background=True)
 
             self.islem_kuyrugu.task_done()
             
@@ -242,11 +273,11 @@ class CommandHandler:
                     f"KESİNLİKLE [ARAMA: ...] etiketini tekrar kullanma!"
                 )
                 # 3. Döngüyü tekrar çalıştır (Derinliği 1 artırarak)
-                self._process(prompt, depth + 1)
+                self._process(prompt, depth + 1,is_background = False)
             else:
                 # 4. Sonuç yoksa Ghost'a bulamadığını söyle
                 prompt = f"GİZLİ SİSTEM BİLGİSİ: İnternette arama yaptım ama sonuç bulamadım. Kullanıcıya bunu uygun dille söyle."
-                self._process(prompt, depth + 1)
+                self._process(prompt, depth + 1, is_background = False) 
                 
         except Exception as e:
             self.app.log(f"SİSTEM HATA (Arama): {e}", "red")
