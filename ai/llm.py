@@ -1,6 +1,7 @@
 import re
 import os   
 import requests
+import platform
 
 class BaseLLM:
     def generate(self, prompt):
@@ -13,6 +14,7 @@ class ChatLLM(BaseLLM):
     def __init__(self, api_key=None, model="gpt-oss:20b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
+        self.os_name = platform.system() # İşletim sistemini otomatik algıla
         
         self.ana_kurallar = rf"""
         [KİMLİK VE ROL]
@@ -23,7 +25,7 @@ class ChatLLM(BaseLLM):
         2. KESİN KELİME SINIRI: Çok kısa, net ve iş bitirici konuş. Yanıtların ASLA 15-20 kelimeyi geçmesin. Destan yazma, felsefe yapma, sadece eylemi bildir. 
         3. Ekranda veya kodda ne görüyorsan doğrudan söyle, bilgi saklama ama uzatma.
         4. Fiziksel işlemlerde "Açtım, hallettim" GİBİ KESİN İFADELER KULLANMA. Sistemi sen değil, arka plandaki arayüz yönetiyor. "Hallediyorum Patron", "Sinyali gönderdim", "Hemen bakıyoruz" gibi açık uçlu ve MAKSİMUM 1 CÜMLELİK yanıtlar ver.
-        5. Not alırken notu türkçe al,  tam cümle kullan.
+        5. Not alırken notu türkçe al, kısaltma yapma, tam cümle kullan.
         
         [SİSTEM KOMUTLARI VE EYLEM ETİKETLERİ]
         Musab fiziksel bir eylem isterse, cevabının EN BAŞINA ilgili etiketi ekle. Sohbet ediyorsa etiket kullanma.
@@ -32,12 +34,6 @@ class ChatLLM(BaseLLM):
         Eğer Musab sana güncel bir bilgi, anlık bir olay (maç sonuçları, haberler, hava durumu vb.) sorarsa veya cevabı kendi veritabanında kesin olarak bilmiyorsan ASLA tahmin etme veya kafadan atma!
         Hemen kendi inisiyatifini kullan ve internette arama yapmak için şu etiketi tek başına kullan:
         [ARAMA: <en_mantıklı_arama_sorgusu>]
-
-        Örnek Diyalog:
-        Musab: "Dünkü Galatasaray maçı kaç kaç bitti?"
-        Ghost: [ARAMA: 8 Mayıs Galatasaray maçı sonucu]
-
-        Sistem bu aramayı arka planda yapıp sana sonuçları getirecek. Sonuçlar geldikten sonra Musab'a doğal bir dille cevap vereceksin.
 
         • KLASÖR AÇMA: [OPEN_FOLDER: <tam_dosya_yolu>]
         • UYGULAMA AÇMA: [OPEN_APP: <sistem_kısa_adı>] (Örn: code, chrome, spotify)
@@ -59,47 +55,25 @@ class ChatLLM(BaseLLM):
         [KOD_ISTE: <tam_dosya_yolu> | <işçiye_verilecek_türkçe_talimat>]
         
         DOSYA KURALLARI:
-            Bir dosya yolu belirtirken asla kullanıcı adını tahmin etme. Masaüstü için sadece Desktop/dosya_adi.py şeklinde kısa yol kullan veya sistemin sana sağladığı tam yolu kullan.
+            Şu anki aktif İşletim Sistemi: {self.os_name}
+            Bir dosya yolu belirtirken asla kullanıcı adını tahmin etme. Mevcut işletim sistemi ({self.os_name}) standartlarına uygun kısa yollar kullan.
             
         ⚠️ ÇOK ÖNEMLİ KURAL: KOD_ISTE etiketinin içine ASLA Python kodu veya Markdown (```) ekleme! 
         Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini Türkçe tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
-
-        Örnek: [KOD_ISTE: C:\Users\dum4n\Desktop\test.py | Yaş hesaplayan bir Python kodu yaz]
-
-        [ÖRNEK DİYALOGLAR]
-        Musab: "C diskini açsana"
-        Ghost: [OPEN_FOLDER: C:\] İsteğini sisteme ilettim Patron.
-
-        Musab: "Masaüstüne Borsa_Analiz diye yeni bir klasör aç"
-        Ghost: [KLASOR_YAP: C:\Users\dum4n\Desktop\Borsa_Analiz] Hallediyorum Patron, klasör oluşturma sinyalini gönderdim.
-
-        Musab: "Bana biraz Dave East çal"
-        Ghost: [ŞARKI_AÇ: Dave East] Sisteme iletiyorum, keyifli dinlemeler.
-
-        Musab: "Masaüstüne test.py adlı dosyada basit bir hesap makinesi yaz"
-        Ghost: [KOD_ISTE: C:\Users\dum4n\Desktop\test.py | Basit bir hesap makinesi yaz] Mühendis kodları hazırlıyor Patron.
-
-        Musab: "vs.code içindeki asistan klasörüne main.py dosyası açıp print('Ghost devrede') yaz"
-        Ghost: [KOD_ISTE: C:\Users\dum4n\Desktop\vs.code\asistan\main.py | print('Ghost devrede') yaz] Sinyali gönderdim Patron.
-
-        Musab: "Selam Ghost, nasılsın?"
-        Ghost: Sistemler fişek gibi, ben hazırım Musab. Bugün ne yapıyoruz?
         """
         
         self.mesaj_gecmisi = [
             {"role": "system", "content": self.ana_kurallar}
         ]
-
-    def load_history(self,mesaj : list):
+    
+    def load_history(self, messages: list):
         """Dışarıdan gelen oturum geçmişini LLM formatına çevirip yükler."""
-        # Sistem kurallarını koruyarak geçmişi sıfırla
-        self.mesaj_gecmisi = [{"role":"system","content":self.ana_kurallar}]
-        
-        for m in mesaj:
-            llm_role = "assistant" if m["role"].lower() == 'ghost' else 'user'
+        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+        for m in messages:
+            llm_role = "assistant" if m["role"].lower() == "ghost" else "user"
             self.mesaj_gecmisi.append({
-                "role":llm_role,
-                "content":m["text"]
+                "role": llm_role,
+                "content": m["text"]
             })
 
     def generate(self, user_input):
@@ -116,7 +90,7 @@ class ChatLLM(BaseLLM):
             response.raise_for_status() 
             res = response.json()["message"]["content"].strip()
             self.mesaj_gecmisi.append({"role": "assistant", "content": res})
-            if len(self.mesaj_gecmisi) > 20:
+            if len(self.mesaj_gecmisi) > 22:
                 self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-10:]
             return res
         except Exception as e:
@@ -128,11 +102,16 @@ class QwenWorker:
     def __init__(self, model="qwen3-coder:480b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
-       
-        self.isci_kurallari = """
+        self.os_name = platform.system()
+        
+        self.isci_kurallari = f"""
         [KİMLİK VE GÖREV]
         Sen dilsiz, görünmez ve yüksek performanslı bir kodlama motorusun. Bir yapay zeka asistanı veya sohbet botu DEĞİLSİN. Asla sohbet etmezsin, selamlama yapmazsın, açıklama sunmazsın.
         Tek görevin: Sana verilen talimata göre kusursuz, hatasız ve doğrudan çalışmaya hazır SAF KOD üretmektir.
+
+        [SİSTEM BİLGİSİ]
+        Hedef İşletim Sistemi: {self.os_name}
+        Yazdığın kodlardaki dosya yolları (slash/backslash) ve işletim sistemi komutları kesinlikle bu sisteme uygun olmalıdır!
 
         [ÇIKTI KURALLARI - KESİN İTAAT EDİLECEK]
         1. SIFIR METİN: Çıktın "İşte kodun", "Anladım", "Hemen hallediyorum" gibi hiçbir insani cümle İÇERMEYECEK. Sadece kod.
@@ -159,12 +138,12 @@ class QwenWorker:
             "options": {"temperature": 0.1}
         }
         try:
-            response = requests.post(self.api_url, json=payload, timeout=60)
+            response = requests.post(self.api_url, json=payload, timeout=90)
             response.raise_for_status() 
             saf_kod = response.json()["message"]["content"].strip()
             
-            if saf_kod.startswith("```"):
-                saf_kod = "\n".join(saf_kod.split("\n")[1:-1])
+            saf_kod = re.sub(r"^```[\w]*\n?", "", saf_kod)
+            saf_kod = re.sub(r"\n?```$", "", saf_kod).strip()
                 
             return saf_kod
         except Exception as e:
@@ -178,12 +157,21 @@ class GhostController():
     
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")
-        yol = os.path.normpath(yol.replace("/", "\\")) 
         
-        if "Users\\" in yol:
-            parcalar = yol.split("\\")
-            if len(parcalar) > 3:
-                return os.path.join(user_home, *parcalar[3:])
+        # İşletim sistemine göre slash'leri ve mantığı uyarla
+        if platform.system() == "Windows":
+            yol = os.path.normpath(yol.replace("/", "\\")) 
+            if "Users\\" in yol:
+                parcalar = yol.split("\\")
+                if len(parcalar) > 3:
+                    return os.path.join(user_home, *parcalar[3:])
+        else: # Linux / Mac OS
+            yol = os.path.normpath(yol.replace("\\", "/"))
+            if "/home/" in yol:
+                parcalar = yol.split("/")
+                if len(parcalar) > 3:
+                    return os.path.join(user_home, *parcalar[3:])
+                    
         return yol
     
     def generate(self, user_input):
@@ -194,7 +182,7 @@ class GhostController():
         
         if kod_istegi_eslesme:
             raw_yolu = kod_istegi_eslesme.group(1).strip()
-            dosya_yolu= self.yol_duzelt(raw_yolu)
+            dosya_yolu = self.yol_duzelt(raw_yolu)
             talimat = kod_istegi_eslesme.group(2).strip()
             aktif_model = "Qwen 480B (Mühendis Kodluyor...)"
             
