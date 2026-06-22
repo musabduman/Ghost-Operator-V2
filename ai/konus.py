@@ -4,6 +4,7 @@ import pygame
 import os
 import threading
 import re
+import uuid
 
 class GhostSpeech:
     def __init__(self, app=None):
@@ -29,6 +30,7 @@ class GhostSpeech:
         if not metin or len(metin) < 1:
             return
 
+        temp_file = f"ghost_voice_{uuid.uuid4().hex}.mp3"
         try:
             # Sesi üret ve mp3 olarak kaydet
             asyncio.run(self._generate_audio(metin))
@@ -38,6 +40,9 @@ class GhostSpeech:
                 on_complete()
         except Exception as e:
             print(f"Ghost Konuşma Hatası: {e}")
+        finally:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
     async def _generate_audio(self, metin):
         communicate = edge_tts.Communicate(metin, self.voice)
