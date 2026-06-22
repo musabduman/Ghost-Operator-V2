@@ -99,10 +99,10 @@ class CommandHandler:
             display = self._clean_response_for_display(response)
             self.app.record_message("ghost" ,display)
  
-            if self.son_komut_sesli:
+            if self.app.voice_mode:
                 self.app.konus.speak(
                     display,
-                    on_complete=lambda: self.app.after(0, self.app.voice_handler.start_listening)
+                    on_complete=lambda: self.app.after(800, self.app.voice_handler.start_listening)
                 )
  
             if not guvenlik_kontrolu(user_input):
