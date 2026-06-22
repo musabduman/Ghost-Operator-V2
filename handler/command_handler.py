@@ -85,10 +85,13 @@ class CommandHandler:
  
     # ── Ana işleme döngüsü ────────────────────────────────────────────────────
  
-    def _process(self, user_input: str, depth: int = 0):
+    def _process(self, user_input: str, depth: int = 0, on_done: threading.Event = None):
         if depth > MAX_DEPTH:
             self.app.log("SİSTEM: Maksimum döngü derinliğine ulaşıldı.", "red")
-            return
+            if on_done:
+                on_done.set()
+                return
+            
         action_taken = False
  
         try:
@@ -125,9 +128,12 @@ class CommandHandler:
  
         except Exception:
             self.app.log(f"SİSTEM HATA:\n{traceback.format_exc()}", "red")
- 
+        
+        finally:
+            if on_done:
+                on_done.set()
+                
     # ── Bellek zenginleştirme ─────────────────────────────────────────────────
- 
     def _enrich_with_memory(self, user_input: str) -> str:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
             return user_input
@@ -198,9 +204,13 @@ class CommandHandler:
         while not self.islem_kuyrugu.empty():
             görev = self.islem_kuyrugu.get() # Sıradaki görevi al
              
+            tamamlandi = threading.Event()
+            
             # Görevi process'e gönder (Senkron çalışmalı, thread açmadan)
             gelişmiş_komut = f"GİZLİ SİSTEM BİLGİSİ: Şu görevi SADECE uygun etiketle yerine getir: {görev}"
             self._process(gelişmiş_komut, depth=0)
+
+            tamamlandi.wait(timeout=60)
 
             self.islem_kuyrugu.task_done()
             
