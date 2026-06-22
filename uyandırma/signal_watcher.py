@@ -24,6 +24,7 @@ class SignalWatcher:
         self.app.after(self.INTERVAL_MS, self._check)
  
     def _wake_up(self):
+        self.app.voice_mode = True
         self.app.deiconify()
         self.app.attributes("-topmost", True)
         self.app.lift()

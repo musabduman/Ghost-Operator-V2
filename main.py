@@ -54,6 +54,10 @@ class GhostOperatorUI(ctk.CTk):
         self._create_lock()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # __ Konuşma durumu  _________________________________
+        self.voice_mode = False
+
+
     # ── Pencere ───────────────────────────────────────────────────────────────
 
     def _setup_window(self):
