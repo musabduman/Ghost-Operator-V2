@@ -14,6 +14,7 @@ from ai.konus import GhostSpeech
 from hafıza.rag_hafıza import Bellek
 from kontrol.spotify import SpotifyManager
 from uyandırma.signal_watcher import SignalWatcher
+from vison.screenshot import screenshot_al_ve_yorumla
 
 from ui.compact_ui import build_compact
 from ui.expanded_ui import build_expanded, append_chat_bubble
@@ -64,10 +65,11 @@ class GhostOperatorUI(ctk.CTk):
     def _setup_window(self):
         self.title("Ghost Operator v2")
         self.geometry(COMPACT_SIZE)
-        self.attributes("-alpha", 0.98)
+        self.attributes("-alpha", 1)
         self.attributes("-topmost", True)
-        self.bind("<FocusIn>",  lambda e: self.attributes("-alpha", 0.98))
+        self.bind("<FocusIn>",  lambda e: self.attributes("-alpha", 1))
         self.bind("<FocusOut>", lambda e: self.attributes("-alpha", 0.60))
+        self.bind("<F9>", lambda e: screenshot_al_ve_yorumla(self)) 
 
     # ── Mod geçişleri ─────────────────────────────────────────────────────────
 

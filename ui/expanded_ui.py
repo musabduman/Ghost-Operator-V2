@@ -5,7 +5,7 @@ Sol sidebar: oturum listesi. Sağ alan: klasik chat + araç çubuğu.
 import customtkinter as ctk
 from ui.ui import build_screenshot_button, build_media_buttons
 from sessions.session_manager import list_sessions, _friendly_date
-
+from vison.screenshot import screenshot_al_ve_yorumla
 
 # ── Renk sabitleri (Ghost teması) ────────────────────────────────────────────
 BG_SIDEBAR  = "#0d0d0d"
@@ -35,7 +35,6 @@ def build_expanded(app) -> ctk.CTkFrame:
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-
 def _build_sidebar(app, parent):
     sidebar = ctk.CTkFrame(parent, width=200, fg_color=BG_SIDEBAR,
                            corner_radius=0, border_width=0)
@@ -70,7 +69,7 @@ def _build_sidebar(app, parent):
     ctk.CTkButton(
         sidebar, text="⤡  Küçük Moda Dön",
         font=FONT_SMALL, height=28,
-        fg_color="transparent", hover_color="#1a1a1a",
+        fg_color="transparent", hover_color="#DADADA",
         text_color=CLR_DIM, border_width=1, border_color=CLR_BORDER,
         command=app.compact_mode
     ).grid(row=3, column=0, padx=10, pady=10, sticky="ew")
@@ -152,12 +151,7 @@ def _build_topbar(app, parent):
                        border_width=0)
     bar.grid(row=0, column=0, sticky="ew", padx=0)
     bar.grid_columnconfigure(1, weight=1)
-    """
-    ctk.CTkLabel(
-        bar, text="GHOST OPERATOR  v2",
-        font=("Consolas", 15, "bold"), text_color="#3a3a3a"
-    ).grid(row=0, column=0, padx=16, pady=10)
-    """
+
     app.model_label = ctk.CTkLabel(
         bar, text="Aktif Zeka: Bekliyor...",
         font=("Consolas", 11, "italic"), text_color="#aaaaaa"
@@ -166,7 +160,7 @@ def _build_topbar(app, parent):
 
     # Sağ: ekran yorumla
     app.ss_button = build_screenshot_button(bar)
-    app.ss_button.configure(width=180, height=28, font=("Consolas", 11))
+    app.ss_button.configure(width=180, height=28, font=("Consolas", 11),command=lambda: screenshot_al_ve_yorumla(app))
     app.ss_button.grid(row=0, column=2, padx=12)
 
 
