@@ -3,7 +3,7 @@ import requests
 from hafıza.rag_hafıza import Bellek
 
 class MemoryAgent:
-    def __init__(self, model="qwen2.5:1.5b"): # Buraya VRAM'i yormayacak hızlı bir model seçmeliyiz
+    def __init__(self, model="gpt-oss:120b"): # Buraya VRAM'i yormayacak hızlı bir model seçmeliyiz
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.bellek = Bellek()
