@@ -6,6 +6,7 @@ import platform
 class BaseLLM:
     def generate(self, prompt):
         raise NotImplementedError
+    
     def __call__(self, user_input):
         return self.generate(user_input)
 
@@ -74,27 +75,38 @@ class ChatLLM(BaseLLM):
                 "content": m["text"]
             })
 
-    def generate(self, user_input):
-        self.mesaj_gecmisi.append({"role": "user", "content": user_input})
-        
+    def _raw_call(self) -> str:
+        """Sadece API çağrısı yapar, mesaj geçmişine dokunmaz."""
         payload = {
             "model": self.model,
             "messages": self.mesaj_gecmisi,
             "stream": False,
             "options": {"temperature": 0.7, "num_ctx": 4096}
         }
+        response = requests.post(self.api_url, json=payload, timeout=90)
+        response.raise_for_status()
+        return response.json()["message"]["content"].strip()
+        
+    def add_user(self, content: str):
+        self.mesaj_gecmisi.append({"role": "user", "content": content})
+        
+    def add_assistant(self, content: str):
+        self.mesaj_gecmisi.append({"role": "assistant", "content": content})
+        # Geçmişi sınırla mantığını buraya aldık ki raw_call sonrası da otomatik çalışsın
+        if len(self.mesaj_gecmisi) > 22:
+            self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-10:]
+
+    def generate(self, user_input: str) -> str:
+        """Eski tek atış — geriye dönük uyumluluk için kalıyor."""
+        self.add_user(user_input)
         try:
-            response = requests.post(self.api_url, json=payload, timeout=90)
-            response.raise_for_status() 
-            res = response.json()["message"]["content"].strip()
-            self.mesaj_gecmisi.append({"role": "assistant", "content": res})
-            if len(self.mesaj_gecmisi) > 22:
-                self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-10:]
+            res = self._raw_call()
+            self.add_assistant(res)
             return res
         except Exception as e:
             self.mesaj_gecmisi.pop()
-            raise Exception(f"Yönetici (Gemma) Çöktü: {e}")
-
+            raise Exception(f"Yönetici Çöktü: {e}")
+        
 # 2. İŞÇİ BEYİN
 class QwenWorker:
     def __init__(self, model="qwen3-coder:480b-cloud"):
@@ -172,10 +184,9 @@ class GhostController():
                     
         return yol
     
-    def generate(self, user_input):
-        cevap = self.supervisor.generate(user_input)
+    def _process_worker_tags(self, cevap: str) -> tuple[str, str]:
+        """Qwen işçisini çağıran o uzun bloğu TEEEEK bir yerde tutuyoruz."""
         aktif_model = "GPT-OSS 120B (Yönetici)"
-        
         kod_istegi_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', cevap, flags=re.DOTALL | re.IGNORECASE)
         
         if kod_istegi_eslesme:
@@ -202,6 +213,20 @@ class GhostController():
                 cevap = f"[SİSTEM HATA] Taşeron koda ulaşamadı: {e}"
 
         return cevap, aktif_model
+
+    def _raw_supervisor_call(self) -> tuple[str, str]:
+        """Yeni ReAct (Agentic Loop) döngüsü için özel çağrı."""
+        try:
+            res = self.supervisor._raw_call()
+            self.supervisor.add_assistant(res)
+            return self._process_worker_tags(res)
+        except Exception as e:
+            raise Exception(f"Supervisor çöktü: {e}")
+
+    def generate(self, user_input: str) -> tuple[str, str]:
+        """Eski sistem komutları (örn: Ön-Mesaj, Uyanış vs) için çağrı."""
+        res = self.supervisor.generate(user_input)
+        return self._process_worker_tags(res)
             
     def __call__(self, user_input):
         return self.generate(user_input)

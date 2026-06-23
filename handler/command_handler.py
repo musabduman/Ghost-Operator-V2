@@ -70,41 +70,25 @@ class CommandHandler:
         ).start()
     
     def _orchestrate_task(self, user_input):
-        # 1. Kelimeleri ayır ve TAM eşleşme ara (Böylece "karar" kelimesi içindeki "ara" hecesi sistemi tetiklemez)
-        eylem_kelimeleri = {"aç", "yaz", "oluştur", "ara", "çal", "kapat", "sil", "kur", "incele", "oku", "çalıştır", "bul", "test"}
-        kelimeler = set(user_input.lower().split())
-        is_action = bool(kelimeler.intersection(eylem_kelimeleri))
+        # Sadece açık sohbet kalıplarını filtrele
+        sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin"]
         
-        # 2. Eğer fiziksel bir komut yoksa, Planlayıcıyı HİÇ YORMA!
-        if not is_action:
+        if any(k in user_input.lower() for k in sohbet_kaliplari):
             self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
-            self._process(user_input, is_background=False)
+            try:
+                response, model = self.controller(user_input)
+                self._update_model_label(model)
+                display = self._clean_response_for_display(response)
+                if display and display.strip():
+                    self.app.record_message("ghost", display)
+            except Exception as e:
+                self.app.log(f"SİSTEM HATA: {e}", "red")
             return
 
-        # 3. Eğer fiziksel komut varsa, eski ağır sanayi sistemini çalıştır
-        threading.Thread(target=self._quick_ack, args=(user_input,), daemon=True).start()
-        self._plan_and_execute(user_input)
-
-    def _quick_ack(self, user_input):
-        """Claude'un temiz yapısı: Sadece ön-mesajı üretir ve seslendirir."""
+        # Geri kalan her şey agentic loop
         self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
-        on_mesaj_prompt = (
-            f"GİZLİ SİSTEM BİLGİSİ: Kullanıcı senden şu işi istedi: '{user_input}'. "
-            f"Sen şu an arka planda bu işin planlamasını ve hazırlığını yapıyorsun. "
-            f"Kullanıcıya süreci devraldığını ve çalışmaya başladığını belirten ÇOK KISA, havalı ve samimi bir cümle kur. "
-            f"(Örn: 'Hemen hallediyorum Patron.', 'Sistemleri tarıyorum, arkana yaslan.') "
-            f"SADECE cümleyi yaz, asla etiket kullanma."
-        )
-        try:
-            on_mesaj, _ = self.controller(on_mesaj_prompt)
-            self.app.log(f"SİSTEM (Ön mesaj) {on_mesaj}")
-            
-            # Sadece konuş, bittikten sonra bir şey tetiklemene gerek yok çünkü plan zaten arkada çalışıyor!
-            if self.app.voice_mode:
-                self.app.konus.speak(on_mesaj)
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA (Ön-Mesaj): {e}", "red")
-
+        self._agentic_loop(user_input)
+        
     def run_startup(self):
         """Uyanış cümlesi + ilk dinleme döngüsünü başlatır."""
         prompt = (
@@ -128,9 +112,7 @@ class CommandHandler:
         """Gerçek ReAct döngüsü — model bitmediğini söyleyene kadar döner."""
         
         # Araç sonuçlarını mesaj geçmişine ekleyerek modeli besle
-        self.controller.supervisor.mesaj_gecmisi.append({
-            "role": "user", "content": user_input
-        })
+        self.controller.supervisor.add_user(user_input)
         
         for adim in range(5):  # max 5 adım, sonsuz döngü önlemi
             response, model = self.controller._raw_supervisor_call()
@@ -244,58 +226,6 @@ class CommandHandler:
     def _update_model_label(self, model: str):
         color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
         self.app.set_model_label(f"Aktif Durum: {model}", color)
-    
-    # ── Planlama ve Yürütme ──────────────────────────────────────────────
-    def _plan_and_execute(self, user_input: str):
-        self.app.set_model_label("Aktif Durum: Planlayıcı Düşünüyor...")
-        
-        adimlar = self.planner.plan_olustur(user_input)
-        
-        self.app.log(f"SİSTEM: Operasyon planlandı. ({len(adimlar)} Adım)", "green")
-        
-        if len(adimlar) > 1:
-            self.app.log_collapsible_plan(adimlar)
-
-        # 1. Bütün adımları kuyruğa diz (Eski direkt _process çağrısını siliyoruz)
-        for adim in adimlar:
-            self.islem_kuyrugu.put((adim,user_input))
-            
-        # 2. Eğer arkada çalışan bir işçi yoksa, işçiyi (thread'i) uyandır
-        if not self.su_an_mesgul:
-            threading.Thread(target=self._kuyruk_tuketici, daemon=True).start()
-
-    # ── İşelem sırası ──────────────────────────────────────────────
-    def _kuyruk_tuketici(self):
-        """Kuyruktaki görevleri sırayla çalıştıran motor."""
-        self.su_an_mesgul = True
-
-        while not self.islem_kuyrugu.empty():
-            görev, original_input = self.islem_kuyrugu.get()
-            
-            # Queue.get() elemanı sildiği için, boşsa son adımdır!
-             
-            is_last_step = self.islem_kuyrugu.empty() 
-            if is_last_step:
-                # SON ADIM: Ghost'un ağzındaki bandı söküyoruz, konuşsun!
-                gelişmiş_komut = (
-                    f"GİZLİ SİSTEM BİLGİSİ: Kullanıcının sana asıl sorusu şuydu: '{original_input}'.\n"
-                    f"Arka plan planlamasının SON aşamasındayız. Şu anki Görev: '{görev}'.\n"
-                    f"Eğer eylem gerekiyorsa uygun [ETİKET] ile eylemi yap, ARDINDAN doğrudan "
-                    f"kullanıcının asıl sorusunu yanıtlayacak şekilde doğal, samimi ve havalı bir sohbet cümlesi kur."
-                )
-                self._process(gelişmiş_komut, depth=0, is_background=False)
-            else:
-                # ARA ADIM: Sessiz ol, gevezelik yapma, sadece etiketi bas
-                gelişmiş_komut = (
-                    f"GİZLİ SİSTEM BİLGİSİ: Arka planda şu görevi yapıyorsun: '{görev}'. "
-                    f"SADECE ve SADECE gerekli eylem etiketini kullan. HİÇBİR sohbet veya açıklama metni yazma."
-                )
-                self._process(gelişmiş_komut, depth=0, is_background=True)
-
-            self.islem_kuyrugu.task_done()
-            
-        self.su_an_mesgul = False
-        self.app.set_model_label("Aktif Durum: Bekliyor...")
 
     # ── Google arama yapabilme ────────────────────────────────────────────────────
     def _tool_search(self, query: str) -> str:
