@@ -44,6 +44,10 @@ class CommandHandler:
     def handle(self, event=None):
         """Entry'deki komutu alıp işleme döngüsünü başlatır."""
         self.son_komut_sesli = (event is None)
+        
+        if not self.son_komut_sesli:
+            self.app.voice_mode = False
+
         user_input = self.app.entry.get().strip()
         if not user_input:
             return

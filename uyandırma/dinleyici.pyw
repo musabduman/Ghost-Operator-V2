@@ -8,11 +8,23 @@ import os
 import time
 import pygame
 
-# İndirdiğin model klasörünün yolu
-MODEL_YOLU = "model"
+# --- DİNAMİK YOL (PATH) MANTIĞI ---
+# 1. Bu dosyanın çalıştığı alt klasörü bul (uyandırma klasörü)
+dinleyici_klasoru = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Bir üst klasöre çık (Asıl projenin olduğu ana dizin)
+ana_dizin = os.path.dirname(dinleyici_klasoru)
+
+# 3. Tüm dosya yollarını ana dizine göre sabitle
+MODEL_YOLU = os.path.join(ana_dizin, "model")
+kilit_yolu = os.path.join(ana_dizin, "ghost_mesgul.lock")
+sinyal_yolu = os.path.join(ana_dizin, "uyandir_sinyali.txt")
+ses_yolu = os.path.join(ana_dizin, "sistem_baslangic.mp3")
+ui_yolu = os.path.join(ana_dizin, "main.py")
+# -----------------------------------
 
 if not os.path.exists(MODEL_YOLU):
-    print("HATA: 'model' klasörü bulunamadı! Lütfen Vosk modelini indirip buraya çıkartın.")
+    print(f"HATA: Model klasörü bulunamadı! Aranan yer: {MODEL_YOLU}")
     sys.exit(1)
 
 model = Model(MODEL_YOLU)
@@ -23,9 +35,7 @@ def callback(indata, frames, time, status):
         print(status, file=sys.stderr)
     q.put(bytes(indata))
 
-ui_process = None 
-
-son_tetiklenme=0
+son_tetiklenme = 0
 
 def ghost_uyandir():
     global son_tetiklenme
@@ -35,26 +45,19 @@ def ghost_uyandir():
     if su_an - son_tetiklenme < 5:
         return
         
-    kilit_yolu = "ghost_mesgul.lock"
-    
     # --- DURUM A: SİSTEM UYKUDAYSA (KİLİT YOKSA) ---
     if not os.path.exists(kilit_yolu):
         try:
-            # ATOMİK KİLİT: 'x' modu dosyayı yaratır. Eğer dosya zaten varsa ANINDA hata verir (FileExistsError)
-            # Bu sayede 3 dinleyici aynı anda buraya gelse bile, sadece ilk gelen kilidi koyar.
+            # ATOMİK KİLİT
             with open(kilit_yolu, "x") as f:
                 f.write("mesgul")
         except FileExistsError:
-            # Demek ki başka bir dinleyici bizden 1 milisaniye önce kilidi koymuş. İşlemi iptal et!
             return
         
         print("\n[🔥] GHOST UYANDI! Arayüz tetikleniyor...")
         son_tetiklenme = su_an
         
-        mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
-        ui_yolu = os.path.join(mevcut_dizin, "ui.py")
-        
-        # UI'yi başlat
+        # UI'yi başlat (Artık doğru klasördeki main.py'yi bulacak)
         subprocess.Popen([sys.executable, ui_yolu])
         
         print("Nöbetçi 3 saniye sağır moduna geçiyor...")
@@ -68,13 +71,11 @@ def ghost_uyandir():
         print("\n[!] Ghost zaten aktif. Arayüze UYANMA SİNYALİ gönderiliyor...")
         son_tetiklenme = su_an 
         
-        with open("uyandir_sinyali.txt", "w") as f:
-            f.write("uyan")
-
+        # 1. Önce sesi çal (Mikrofon açılmadan önce)
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            pygame.mixer.music.load("sistem_baslangic.mp3") 
+            pygame.mixer.music.load(ses_yolu) 
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():
                 pygame.time.Clock().tick(10)
@@ -83,6 +84,10 @@ def ghost_uyandir():
             
         with q.mutex:
             q.queue.clear()
+            
+        # 2. Ses bittikten sonra sinyal dosyasını ana dizine gönder
+        with open(sinyal_yolu, "w") as f:
+            f.write("uyan")
                     
     print("Nöbetçi tekrar dinliyor...")
 
@@ -101,11 +106,7 @@ def ana_dongu():
                 metin = sonuc.get("text", "")
                 
                 if metin:
-                    print(f"Duyulan: {metin}") # Test için ne duyduğunu ekrana yazdırıyoruz
-                    
-                    # MÜHENDİSLİK HİLESİ: 
-                    # Türkçe model İngilizce "Ghost" kelimesini tam anlamayabilir. 
-                    # Okunuşu olan "gost", "dost" veya "boş" gibi kelimeleri duyarsa da tetiklensin.
+                    print(f"Duyulan: {metin}")
                     tetikleyiciler = ["ghost", "gost", "dost", "bos", "boss"]
                     
                     if any(kelime in metin for kelime in tetikleyiciler):
