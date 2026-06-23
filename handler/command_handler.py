@@ -12,6 +12,7 @@ import threading
 import queue
 import subprocess   
 
+from pyinstrument import Profiler
 from hafıza.rag_hafıza import Bellek
 from ai.llm import GhostController, ChatLLM
 from tools.google_tool import ghost_search_tool
@@ -57,12 +58,12 @@ class CommandHandler:
  
         self.app.record_message("user", user_input)
         self.app.entry.delete(0, "end")
-        self.app.record_message("Ghost", "Düşünüyor...")
+        #self.app.record_message("Ghost", "Düşünüyor...")
         self.app.set_model_label("Aktif Zeka: Yönlendiriliyor...")
  
         threading.Thread(
             target=self._orchestrate_task,
-            args=(user_input),
+            args=(user_input,),
             daemon=True
         ).start()
     
@@ -86,7 +87,7 @@ class CommandHandler:
         )
         try:
             on_mesaj, _ = self.controller(on_mesaj_prompt)
-            self.app.record_message("ghost", on_mesaj)
+            self.app.log(f"SİSTEM (Ön mesaj) {on_mesaj}")
             
             # Sadece konuş, bittikten sonra bir şey tetiklemene gerek yok çünkü plan zaten arkada çalışıyor!
             if self.app.voice_mode:
@@ -122,7 +123,10 @@ class CommandHandler:
                 return
             
         action_taken = False
- 
+        
+        profiler=Profiler()
+        profiler.start()
+        
         try:
             enriched = self._enrich_with_memory(user_input) 
             response, model = self.controller(enriched)
@@ -167,6 +171,7 @@ class CommandHandler:
             self.app.log(f"SİSTEM HATA:\n{traceback.format_exc()}", "red")
         
         finally:
+            profiler.stop()
             if on_done:
                 on_done.set()
 
@@ -227,10 +232,15 @@ class CommandHandler:
     def _plan_and_execute(self, user_input: str):
         self.app.set_model_label("Aktif Zeka: Planlayıcı Düşünüyor...")
         
+        profiler=Profiler()
+        profiler.start()
+
         adimlar = self.planner.plan_olustur(user_input)
         
         self.app.log(f"SİSTEM: Operasyon planlandı. ({len(adimlar)} Adım)", "green")
         
+        profiler.stop()
+
         if len(adimlar) > 1:
             self.app.log_collapsible_plan(adimlar)
 
@@ -253,8 +263,8 @@ class CommandHandler:
             görev, original_input = self.islem_kuyrugu.get()
             
             # Queue.get() elemanı sildiği için, boşsa son adımdır!
-            is_last_step = self.islem_kuyrugu.empty() 
              
+            is_last_step = self.islem_kuyrugu.empty() 
             if is_last_step:
                 # SON ADIM: Ghost'un ağzındaki bandı söküyoruz, konuşsun!
                 gelişmiş_komut = (

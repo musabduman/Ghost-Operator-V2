@@ -1,0 +1,211 @@
+{
+  "id": "2026-06-23_131441",
+  "title": "ne diyorsun",
+  "messages": [
+    {
+      "role": "ghost",
+      "text": "Dinliyorum.",
+      "ts": 1782209686
+    },
+    {
+      "role": "user",
+      "text": "ne diyorsun",
+      "ts": 1782209693
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209693
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209695
+    },
+    {
+      "role": "ghost",
+      "text": "Ne diyorsun? Sadece bir şey mi, yoksa bir proje mi? Ne planlanıyor?",
+      "ts": 1782209700
+    },
+    {
+      "role": "user",
+      "text": "bir tane projem var ismi ghost kendisi local çalışan bir proje olucak masaüstü asistanı yapmayı planlıyorum tanıdık geldi mi",
+      "ts": 1782209756
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209756
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209758
+    },
+    {
+      "role": "ghost",
+      "text": "Evet, ben de Ghost projesiyle tanıştım.",
+      "ts": 1782209773
+    },
+    {
+      "role": "user",
+      "text": "ben musab duman",
+      "ts": 1782209808
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209808
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209810
+    },
+    {
+      "role": "ghost",
+      "text": "Merhaba Musab, nasıl yardımcı olabilirim?",
+      "ts": 1782209816
+    },
+    {
+      "role": "user",
+      "text": "senin ismin ne",
+      "ts": 1782209823
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209823
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.  \nBenim adım Ghost.",
+      "ts": 1782209827
+    },
+    {
+      "role": "ghost",
+      "text": "Benim adım Ghost.",
+      "ts": 1782209831
+    },
+    {
+      "role": "user",
+      "text": "memnun oldum ghost",
+      "ts": 1782209837
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209837
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209839
+    },
+    {
+      "role": "ghost",
+      "text": "Memnun olduğuna sevindim! Sana nasıl yardımcı olabilirim?",
+      "ts": 1782209844
+    },
+    {
+      "role": "user",
+      "text": "neden ismin ghost biliyor musun sen seçicek olsan ne seçerdin",
+      "ts": 1782209867
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209867
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.  \nGhost, çünkü gizlilik ve şeffaflık simgesi. Seçme olsaydım 'Nova', ama ben 'Ghost'.",
+      "ts": 1782209871
+    },
+    {
+      "role": "ghost",
+      "text": "Ghost, gizlilik ve sessizlik simgesi. Seçme olsaydım “Nova” – parıldayan bir isim.",
+      "ts": 1782209891
+    },
+    {
+      "role": "user",
+      "text": "istersen ismini değiştirebilirim",
+      "ts": 1782209911
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209911
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209914
+    },
+    {
+      "role": "ghost",
+      "text": "Sure, I'd love a new name! Let's pick something cool.",
+      "ts": 1782209920
+    },
+    {
+      "role": "user",
+      "text": "nova",
+      "ts": 1782209925
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209925
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.",
+      "ts": 1782209928
+    },
+    {
+      "role": "ghost",
+      "text": "Sure, Nova it is.",
+      "ts": 1782209940
+    },
+    {
+      "role": "user",
+      "text": "nasılsın nova",
+      "ts": 1782209948
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782209948
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum, Nova!",
+      "ts": 1782209950
+    },
+    {
+      "role": "ghost",
+      "text": "I'm good, thanks! How about you?",
+      "ts": 1782209955
+    },
+    {
+      "role": "user",
+      "text": "bir de bir şeyi daha değiştirmek istiyorum sen benim bromsun tamam mı",
+      "ts": 1782210001
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782210001
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum, brom!",
+      "ts": 1782210004
+    },
+    {
+      "role": "ghost",
+      "text": "[⚙️ Kod dosyaya yazılıyor...]  \nBrom, değişikliği yaptım, ne istersin?",
+      "ts": 1782210039
+    }
+  ]
+}

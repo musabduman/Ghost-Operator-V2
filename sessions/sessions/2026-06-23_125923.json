@@ -1,0 +1,21 @@
+{
+  "id": "2026-06-23_125923",
+  "title": "naber",
+  "messages": [
+    {
+      "role": "ghost",
+      "text": "Efendim.",
+      "ts": 1782208769
+    },
+    {
+      "role": "user",
+      "text": "naber",
+      "ts": 1782208775
+    },
+    {
+      "role": "Ghost",
+      "text": "Düşünüyor...",
+      "ts": 1782208775
+    }
+  ]
+}

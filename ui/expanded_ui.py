@@ -125,12 +125,12 @@ def _populate_sessions(app, frame):
         ).pack(anchor="w", padx=4)
 
         # Tıklama
-        def _on_click(s_id=sid):
+        def _on_click(event, s_id=sid):
             app.switch_session(s_id)
 
-        row.bind("<Button-1>", lambda e, fn=_on_click: fn())
+        row.bind("<Button-1>", _on_click)
         for child in row.winfo_children():
-            child.bind("<Button-1>", lambda e, fn=_on_click: fn())
+            child.bind("<Button-1>", _on_click)
 
 
 # ── Ana Alan ──────────────────────────────────────────────────────────────────
