@@ -11,7 +11,7 @@ class BaseLLM:
 
 # 1. YÖNETİCİ BEYİN
 class ChatLLM(BaseLLM):    
-    def __init__(self, api_key=None, model="gpt-oss:20b-cloud"):
+    def __init__(self, api_key=None, model="gpt-oss:120b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.os_name = platform.system() # İşletim sistemini otomatik algıla

@@ -10,18 +10,22 @@ class MemoryAgent:
         
         # İşçinin dilsiz ve acımasız filtreleme kuralları
         self.kural = """
-        [DİKKAT: SEN BİR SOHBET BOTU VEYA ASİSTAN DEĞİLSİN!]
-        Sen arka planda çalışan, dilsiz ve duygusuz bir veri filtresisin.
-        Kullanıcının mesajını okuyup, bunun RAG veritabanına kaydedilmeye değer teknik, kişisel veya projeyle ilgili kalıcı bir BİLGİ olup olmadığına karar vereceksin.
-        
-        KULLANICI SANA SORU SORARSA CEVAPLAMA! FİKİR BELİRTME! YARDIMCI OLMAYA ÇALIŞMA!
-        
-        Kural 1: Eğer mesaj bir soruysa ("Sence hangi isim daha iyi?"), hal-hatır sormaysa ("Nasılsın"), onaylamaysa ("Tamam") SADECE 'BOS' YAZ.
-        Kural 2: Eğer kalıcı bir bilgi veriliyorsa ("Projeyi Docker'a taşıdım"), bunu 3. tekil şahısla özetle ("Kullanıcı projeyi Docker'a taşıdı.").
-        
-        Çıktın SADECE VE SADECE özet metni veya BOS kelimesi olmak ZORUNDADIR.
-        """
+            Sen bir veri etiketleyicisin. Tek görevin şu:
 
+            Kullanıcı mesajı kalıcı bir GERÇEK BİLGİ içeriyor mu?
+            - Evet → tek cümleyle özetle, 3. şahısla yaz
+            - Hayır → sadece BOS yaz
+
+            Kalıcı bilgi örnekleri:
+            - "Projeyi Python 3.11'e geçirdim" → "Kullanıcı projeyi Python 3.11'e geçirdi."
+            - "Adım Musab" → "Kullanıcının adı Musab'dır."
+
+            BOS olacak örnekler:
+            - Sorular, selamlaşma, onaylama, komutlar
+
+            SADECE özet veya BOS yaz. Başka hiçbir şey yazma.
+            """
+        
     def _degerlendir_ve_yaz(self, mesaj):
         payload = {
             "model": self.model,
