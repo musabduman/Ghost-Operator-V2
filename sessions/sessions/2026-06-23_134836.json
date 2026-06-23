@@ -1,0 +1,21 @@
+{
+  "id": "2026-06-23_134836",
+  "title": "benim bir tane projem var ismi ghost ama...",
+  "messages": [
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.  \nİyiyim, sen nasılsın?",
+      "ts": 1782211717
+    },
+    {
+      "role": "user",
+      "text": "benim bir tane projem var ismi ghost ama kendisi isminden memnun değilmiş isminin nova olmasını istiyormuş sence hangi isim daha iyi",
+      "ts": 1782211789
+    },
+    {
+      "role": "ghost",
+      "text": "Nova, daha akılda kalıcı ve enerjik bir izlenim bırakır, senin için daha iyi.",
+      "ts": 1782211816
+    }
+  ]
+}
