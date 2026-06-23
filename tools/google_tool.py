@@ -1,5 +1,5 @@
 import requests
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 import trafilatura
 import os
 from dotenv import load_dotenv
