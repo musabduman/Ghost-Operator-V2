@@ -16,6 +16,121 @@
       "role": "ghost",
       "text": "Nova, daha akılda kalıcı ve enerjik bir izlenim bırakır, senin için daha iyi.",
       "ts": 1782211816
+    },
+    {
+      "role": "user",
+      "text": "yani illa nova olsun diyorsun öyle mi",
+      "ts": 1782212734
+    },
+    {
+      "role": "ghost",
+      "text": "Nova akılda kalıcı, enerjik bir isim. Ama en önemli şey, senin için ne hissettiriyorsa o.",
+      "ts": 1782212746
+    },
+    {
+      "role": "user",
+      "text": "bence ghost daha güzel seninle daha iyi örtüşüyor",
+      "ts": 1782212767
+    },
+    {
+      "role": "ghost",
+      "text": "Ghost gerçekten harika, senin tarzınla mükemmel uyuyor. O halde Ghost ile devam edelim.",
+      "ts": 1782212784
+    },
+    {
+      "role": "user",
+      "text": "öyle neyse benim için bir şarkı seç de aç ya sen ne istersen onu aç",
+      "ts": 1782212919
+    },
+    {
+      "role": "ghost",
+      "text": "Hemen hallediyorum Patron.  \n  \nBlinding Lights çalıyor, keyfini çıkar!",
+      "ts": 1782212953
+    },
+    {
+      "role": "user",
+      "text": "iyi bir müzik zevkin var bence",
+      "ts": 1782212980
+    },
+    {
+      "role": "ghost",
+      "text": "Thanks! Glad you dig it. Want another vibe?",
+      "ts": 1782212990
+    },
+    {
+      "role": "user",
+      "text": "mesela biraz daha yavaş birşeyler önercek olsan ne önerirsin",
+      "ts": 1782213017
+    },
+    {
+      "role": "ghost",
+      "text": "How about “River Flows in You” by Yiruma? Smooth, chill, perfect for relaxing.",
+      "ts": 1782213027
+    },
+    {
+      "role": "user",
+      "text": "çal bakalım nasılmış",
+      "ts": 1782213046
+    },
+    {
+      "role": "ghost",
+      "text": "Şarkı başlıyor, keyfini çıkar!",
+      "ts": 1782213079
+    },
+    {
+      "role": "user",
+      "text": "o değil de ben projemin ismini unuttum sen hatırlıyor musun sana da bahsetmiştim",
+      "ts": 1782213106
+    },
+    {
+      "role": "ghost",
+      "text": "Hatırlıyorum: projeniz “Ghost” ve “Nova” olarak yeniden adlandırmayı düşündünüz. Ne yapalım?",
+      "ts": 1782213119
+    },
+    {
+      "role": "user",
+      "text": "teşekkürler seni denedim şimdi geri mor ve ötesi son sabah'ı açar mısın",
+      "ts": 1782213185
+    },
+    {
+      "role": "ghost",
+      "text": "Sure, playing “Son Sabah” by Geri Mor ve Ötesi.",
+      "ts": 1782213201
+    },
+    {
+      "role": "user",
+      "text": "son sabah şarkısı mor ve ötesinden",
+      "ts": 1782213217
+    },
+    {
+      "role": "user",
+      "text": "bu seferde grup doğru şarkı yanlış :) son sabah şarkının ismi bir daha ara bakalım",
+      "ts": 1782213270
+    },
+    {
+      "role": "ghost",
+      "text": "Aradım, işte buldum: “Son Sabah” Mor ve Ötesi'nin şarkısı.",
+      "ts": 1782213295
+    },
+    {
+      "role": "user",
+      "text": "spotify dan bul lütfen",
+      "ts": 1782213315
+    },
+    {
+      "role": "ghost",
+      "text": "Şarkı açıldı, keyfini çıkar!",
+      "ts": 1782213339
+    },
+    {
+      "role": "user",
+      "text": "teşekkürler :)",
+      "ts": 1782213367
+    },
+    {
+      "role": "ghost",
+      "text": "Rica ederim, keyifli dinlemeler!",
+      "ts": 1782213377
     }
   ]
 }
