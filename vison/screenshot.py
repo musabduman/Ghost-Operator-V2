@@ -28,17 +28,16 @@ def screenshot_çek(self, kayit_yolu, soru):
         def vision_istegi():
             kod_bulundu_mu, saf_kod, mesaj = groq_vision_analiz(soru, kayit_yolu)
             
-            if kod_bulundu_mu:
-                self.after(0, lambda: self.log("SİSTEM: Groq ekranda kod tespit etti!", "green"))
-            
-            # CEVABI DOĞRUDAN CHAT BALONUNA (SOHBETE) BASIYORUZ
-            self.after(0, lambda: self.record_message("ghost", mesaj))
-            
-            # Eğer sesli mod açıksa Nova bunu okusun
-            if self.voice_mode:
-                self.konus.speak(mesaj)
-    
-        threading.Thread(target=vision_istegi, daemon=True).start()
+            if kod_bulundu_mu and saf_kod:
+                # Kodu + kullanıcı sorusunu ana modele (120b) ilet
+                # O zaten gerekirse Qwen'e [KOD_ISTE] ile yönlendirecek
+                birlesik = f"Ekran görüntüsünden çıkarılan kod:\n\n{saf_kod}\n\nKullanıcının isteği: {soru}"
+                cevap, aktif_model = self.command_handler.controller.generate(birlesik)
+                self.after(0, lambda: self.record_message("ghost", cevap))
+            else:
+                # Kod yok, LLaVA'nın yorumunu direkt göster
+                self.after(0, lambda: self.record_message("ghost", mesaj))
+                threading.Thread(target=vision_istegi, daemon=True).start()
 
     except Exception as e:
         self.deiconify()
