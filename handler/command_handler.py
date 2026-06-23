@@ -124,63 +124,76 @@ class CommandHandler:
             self.app.log(f"SİSTEM HATA (Uyanış): {e}", "red")
  
     # ── Ana işleme döngüsü ────────────────────────────────────────────────────
- 
-    def _process(self, user_input: str, depth: int = 0, on_done: threading.Event = None, is_background : bool = False):
-        if depth > MAX_DEPTH:
-            self.app.log("SİSTEM: Maksimum döngü derinliğine ulaşıldı.", "red")
-            if on_done:
-                on_done.set()
+    def _agentic_loop(self, user_input: str):
+        """Gerçek ReAct döngüsü — model bitmediğini söyleyene kadar döner."""
+        
+        # Araç sonuçlarını mesaj geçmişine ekleyerek modeli besle
+        self.controller.supervisor.mesaj_gecmisi.append({
+            "role": "user", "content": user_input
+        })
+        
+        for adim in range(5):  # max 5 adım, sonsuz döngü önlemi
+            response, model = self.controller._raw_supervisor_call()
+            self._update_model_label(model)
+
+            # Araç var mı kontrol et
+            sonuc = self._araclari_calistir(response)
+            
+            if sonuc is None:
+                # Araç yok = model bitti, kullanıcıya göster
+                display = self._clean_response_for_display(response)
+                self.app.record_message("ghost", display)
+                if self.app.voice_mode:
+                    self.app.konus.speak(display)
                 return
             
-        action_taken = False
+            # Araç sonucunu modele geri besle, döngü devam eder
+            self.controller.supervisor.mesaj_gecmisi.append({
+                "role": "user",
+                "content": f"[ARAÇ SONUCU - Adım {adim+1}]: {sonuc}\nDevam et, gerekirse başka araç kullan."
+            })
         
-        try:
-            enriched = self._enrich_with_memory(user_input) 
-            response, model = self.controller(enriched)
-            self._update_model_label(model)
- 
-            display = self._clean_response_for_display(response)
-            if display:
-                if is_background:
-                    #Arka plan işlemlerini chat balonuna atma, sadece gizlice loga bas
-                    self.app.log(f"SİSTEM (Arka Plan Sesli Düşünce): {display}", "green")
-                else:
-                    # Final adımı! Chat balonuna yaz ve seslendir
-                    self.app.record_message("ghost" ,display)
-                    if self.app.voice_mode:
-                        self.app.konus.speak(
-                            display,
-                            on_complete=lambda: self.app.after(800, self.app.voice_handler.start_listening)
-                        )
-            else:
-                if not is_background and self.app.voice_mode:
-                    self.app.after(800, self.app.voice_handler.start_listening)
-                    
-            if not guvenlik_kontrolu(user_input):
-                self.app.log("SİSTEM: Tehlikeli komut algılandı! İşlem reddedildi.", "red")
-                return
- 
-            # Her eylemi kendi metoduna delege et
-            action_taken |= self._handle_open_folder(response)
-            action_taken |= self._handle_open_app(response)
-            action_taken |= self._handle_play_song(response)
-            action_taken |= self._handle_play_playlist(response)
-            action_taken |= self._handle_search(response, user_input,depth)
-            action_taken |= self._handle_save_note(response)
-            action_taken |= self._handle_make_folder(response)
-            action_taken |= self._handle_inspect_folder(response, user_input, depth)
-            action_taken |= self._handle_write_file(response)
-            action_taken |= self._handle_run_code(response, depth)
-            if not action_taken:
-                self._handle_read_file(response, user_input, depth)
- 
-        except Exception:
-            self.app.log(f"SİSTEM HATA:\n{traceback.format_exc()}", "red")
-        
-        finally:
-            if on_done:
-                on_done.set()
+        self.app.log("SİSTEM: Maksimum adım aşıldı.", "red")
 
+    def _araclari_calistir(self, response: str) -> str | None:
+        """Regex ile eşleşen ilk aracı çalıştırır ve sonucunu string döner."""
+        
+        # İstisna 1: Çift parametreli araç (Dosya Yazma)
+        m = PATTERNS["dosya_yaz"].search(response)
+        if m:
+            path = akilli_yol_cozucu(m.group(1).strip())
+            code = m.group(2).strip()
+            return self._tool_write_file(path, code)
+
+        # Diğer standart araçlar
+        # Format: (Pattern Adı, Çalıştırılacak Fonksiyon, Yol Çözücü Gerekli mi?)
+        standart_araclar = [
+            ("arama", self._tool_search, False),
+            ("klasor_ac", self._tool_open_folder, True),
+            ("uygulama_ac", self._tool_open_app, False),
+            ("sarki_ac", self._tool_play_song, False),
+            ("playlist_ac", self._tool_play_playlist, False),
+            ("not_al", self._tool_save_note, False),
+            ("klasor_yap", self._tool_make_folder, True),
+            ("klasor_incele", self._tool_inspect_folder, True),
+            ("kodu_calistir", self._tool_run_code, True),
+            ("dosya_oku", self._tool_read_file, True)
+        ]
+
+        for pattern_adi, func, yol_coz in standart_araclar:
+            m = PATTERNS[pattern_adi].search(response)
+            if m:
+                param = m.group(1).strip()
+                # Eğer araca giren veri bir dosya yoluysa, akıllı çözücüyü kullan
+                if yol_coz:
+                    param = akilli_yol_cozucu(param)
+                try:
+                    return func(param)
+                except Exception as e:
+                    return f"Araç hatası ({pattern_adi}): {e}"
+                    
+        return None
+    
     # ── Bellek zenginleştirme ─────────────────────────────────────────────────
     def _enrich_with_memory(self, user_input: str) -> str:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
@@ -228,13 +241,11 @@ class CommandHandler:
         return result.strip()
         
     # ── Model label güncellemesi ──────────────────────────────────────────────
- 
     def _update_model_label(self, model: str):
         color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
         self.app.set_model_label(f"Aktif Durum: {model}", color)
     
     # ── Planlama ve Yürütme ──────────────────────────────────────────────
-    
     def _plan_and_execute(self, user_input: str):
         self.app.set_model_label("Aktif Durum: Planlayıcı Düşünüyor...")
         
@@ -254,8 +265,6 @@ class CommandHandler:
             threading.Thread(target=self._kuyruk_tuketici, daemon=True).start()
 
     # ── İşelem sırası ──────────────────────────────────────────────
-
-
     def _kuyruk_tuketici(self):
         """Kuyruktaki görevleri sırayla çalıştıran motor."""
         self.su_an_mesgul = True
@@ -289,248 +298,135 @@ class CommandHandler:
         self.app.set_model_label("Aktif Durum: Bekliyor...")
 
     # ── Google arama yapabilme ────────────────────────────────────────────────────
-
-    def _handle_search(self, response: str, user_input: str, depth: int) -> bool:
-        m = PATTERNS["arama"].search(response)
-        if not m:
-            return False
-            
-        query = m.group(1).strip()
+    def _tool_search(self, query: str) -> str:
         self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
-        
-        try:
-            # 1. Aramayı yap ve sonuçları al (google_tool.py veya yazdığın araçtan dönecek)
-            # return_results=True gibi bir mantıkla veriyi geri alman lazım
-            arama_sonuclari = ghost_search_tool(query) 
-            
-            # 2. Eğer sonuç bulduysan, Ghost'a tekrar gizli bir mesaj gönder:
-            if arama_sonuclari:
-                self.app.log("SİSTEM: Veriler çekildi, Ghost sentezliyor...", "green")
-                prompt = (
-                    f"GİZLİ SİSTEM BİLGİSİ: '{query}' için internette arama yaptım ve şu sonuçları buldum:\n"
-                    f"{arama_sonuclari}\n\n"
-                    f"Şimdi bu bilgileri kullanarak kullanıcının şu sorusuna doğal, havalı ve kısa bir cevap ver: '{user_input}'. "
-                    f"KESİNLİKLE [ARAMA: ...] etiketini tekrar kullanma!"
-                )
-                # 3. Döngüyü tekrar çalıştır (Derinliği 1 artırarak)
-                self._process(prompt, depth + 1,is_background = False)
-            else:
-                # 4. Sonuç yoksa Ghost'a bulamadığını söyle
-                prompt = f"GİZLİ SİSTEM BİLGİSİ: İnternette arama yaptım ama sonuç bulamadım. Kullanıcıya bunu uygun dille söyle."
-                self._process(prompt, depth + 1, is_background = False) 
-                
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA (Arama): {e}", "red")
-            
-        return True
-
+        arama_sonuclari = ghost_search_tool(query) 
+        if arama_sonuclari:
+            return f"Arama Sonuçları:\n{arama_sonuclari}"
+        return "İnternette sonuç bulunamadı."
+    
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
- 
-    def _handle_open_folder(self, response: str) -> bool:
-        m = PATTERNS["klasor_ac"].search(response)
-        if not m:
-            return False
-        path = akilli_yol_cozucu(m.group(1))
+    def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
             os.startfile(path)
             self.app.log(f"SİSTEM: '{path}' açıldı.", "green")
-        else:
-            self.app.log("SİSTEM: Derin arama yapılıyor...")
-            real = derin_arama(path)
-            if real:
-                os.startfile(real)
-                self.app.log(f"SİSTEM: Bulundu → {real}", "green")
-            else:
-                self.app.log("SİSTEM HATA: Klasör bulunamadı.", "red")
-        return True
- 
-    def _handle_open_app(self, response: str) -> bool:
-        m = PATTERNS["uygulama_ac"].search(response)
-        if not m:
-            return False
+            return f"'{path}' klasörü başarıyla açıldı."
+        
+        real = derin_arama(path)
+        if real:
+            os.startfile(real)
+            self.app.log(f"SİSTEM: Bulundu → {real}", "green")
+            return f"Klasör bulundu ve açıldı: '{real}'"
             
-        name = m.group(1).strip().lower()
+        return "Klasör bulunamadı."
+    
+    # ── Uygulama açma ────────────────────────────────────────────────────
+    def _tool_open_app(self, name: str) -> str:
+        name = name.lower()
         self.app.log(f"SİSTEM: '{name}' başlatılıyor...", "green")
         
-        # İşletim sistemine göre yollar ve komutlar
         if sys.platform.startswith("win"):
-            # Windows yolları (dum4n yerine genel kullanıcı dizini ~ kullanıldı)
             SPECIAL = {
                 "cursor": os.path.expanduser(r"~\AppData\Local\Programs\cursor\Cursor.exe"),    
                 "discord": (os.path.expanduser(r"~\AppData\Local\Discord\Update.exe") ,["--processStart", "Discord.exe"]),
                 "whatsapp": "whatsapp://"
             }
-            try:
-                if name in SPECIAL:
-                    app = SPECIAL[name]
-                    if isinstance(app, tuple):
-                        subprocess.Popen([app[0]] + app[1])
-                    else:
-                        os.startfile(app)
+            if name in SPECIAL:
+                app = SPECIAL[name]
+                if isinstance(app, tuple):
+                    subprocess.Popen([app[0]] + app[1])
                 else:
-                    os.system(f"start {name}")
-            except Exception as e:
-                self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
-        
-        elif sys.platform.startswith("linux"):
-            # Zorin OS / Linux için komutlar
-            SPECIAL = {
-                "cursor": "cursor",   # Genelde PATH içindedir veya alias atanmıştır
-                "discord": "discord",
-                "whatsapp": "whatsapp-for-linux" # veya kullandığın web wrapper
-            }
-            try:
-                # Linux'ta arkaplanda çalıştırmak için nohup veya & kullanılır
-                komut = SPECIAL.get(name, name)
-                os.system(f"nohup {komut} >/dev/null 2>&1 &")
-            except Exception as e:
-                self.app.log(f"SİSTEM HATA: Uygulama açılamadı. {e}", "red")
+                    os.startfile(app)
+            else:
+                os.system(f"start {name}")
                 
-        return True
- 
-    def _handle_play_song(self, response: str) -> bool:
-        m = PATTERNS["sarki_ac"].search(response)
-        if not m:
-            return False
-        song = m.group(1).strip()
+        elif sys.platform.startswith("linux"):
+            SPECIAL = {
+                "cursor": "cursor",
+                "discord": "discord",
+                "whatsapp": "whatsapp-for-linux"
+            }
+            komut = SPECIAL.get(name, name)
+            os.system(f"nohup {komut} >/dev/null 2>&1 &")
+            
+        return f"'{name}' uygulaması başlatıldı komutu verildi."
+
+    # ── Müzik çalma ────────────────────────────────────────────────────
+    def _tool_play_song(self, song: str) -> str:
         self.app.log(f"SİSTEM: Spotify'da '{song}' aranıyor...", "green")
         try:
             result = self.spotify.play_specific_song(song)
-            self.app.log(f"SİSTEM: {result}", "green")
+            return f"Spotify Sonucu: {result}"
         except Exception as e:
+            # Cihaz kapalıysa playlist ile dürtme mantığı
             if any(k in str(e).lower() for k in ["device", "active", "not found"]):
                 try:
                     self.spotify.play_playlist("mesela yanii")
                     time.sleep(2)
-                    self.app.log(f"SİSTEM: Cihaz uyandırıldı, '{song}' açıldı.", "green")
+                    self.spotify.play_specific_song(song)
+                    return f"Cihaz uyandırıldı ve '{song}' açıldı."
                 except Exception as e2:
-                    self.app.log(f"SİSTEM HATA: Cihaz uyandırılamadı. {e2}", "red")
-            else:
-                self.app.log(f"SİSTEM HATA (Spotify): {e}", "red")
-        return True
- 
-    def _handle_play_playlist(self, response: str) -> bool:
-        m = PATTERNS["playlist_ac"].search(response)
-        if not m:
-            return False
-        playlist = m.group(1).strip()
+                    return f"Cihaz uyandırılamadı: {e2}"
+            return f"Spotify Hatası: {e}"
+
+    # ── Playlist açma ────────────────────────────────────────────────────
+    def _tool_play_playlist(self, playlist: str) -> str:
         self.app.log(f"SİSTEM: '{playlist}' listesi aranıyor...", "green")
-        try:
-            result = self.spotify.play_playlist(playlist)
-            self.app.log(f"SİSTEM: {result}", "green")
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA (Spotify): {e}", "red")
-        return True
- 
-    def _handle_save_note(self, response: str) -> bool:
-        m = PATTERNS["not_al"].search(response)
-        if not m:
-            return False
-        note = m.group(1).strip()
+        result = self.spotify.play_playlist(playlist)
+        return f"Spotify Sonucu: {result}"
+
+    # ── Hafızaya not etme ────────────────────────────────────────────────────
+    def _tool_save_note(self, note: str) -> str:
         self.bellek.bellege_yaz(note)
         self.app.log(f"SİSTEM: Beyne kazındı → '{note}'", "green")
-        return True
- 
-    def _handle_make_folder(self, response: str) -> bool:
-        m = PATTERNS["klasor_yap"].search(response)
-        if not m:
-            return False
-        path = akilli_yol_cozucu(m.group(1))
-        try:
-            os.makedirs(path, exist_ok=True)
-            self.app.log(f"SİSTEM: Klasör oluşturuldu → {path}", "green")
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA (Klasör Yap): {e}", "red")
-        return True
- 
-    def _handle_inspect_folder(self, response: str, user_input: str, depth: int) -> bool:
-        m = PATTERNS["klasor_incele"].search(response)
-        if not m:
-            return False
-        path = akilli_yol_cozucu(m.group(1))
+        return "Not başarıyla belleğe kaydedildi."
+
+    # ── Klasör oluşturma ────────────────────────────────────────────────────
+    def _tool_make_folder(self, path: str) -> str:
+        os.makedirs(path, exist_ok=True)
+        self.app.log(f"SİSTEM: Klasör oluşturuldu → {path}", "green")
+        return f"'{path}' dizininde klasör başarıyla oluşturuldu."
+
+    # ── Klasörde gezinme ────────────────────────────────────────────────────
+    def _tool_inspect_folder(self, path: str) -> str:
         if os.path.isdir(path):
             files = ", ".join(os.listdir(path)) or "Klasör boş."
-            self.app.log(f"SİSTEM: Klasör tarandı → {files}", "green")
-            prompt = (
-                f"GİZLİ SİSTEM BİLGİSİ: '{path}' klasörünün içeriği: {files}\n"
-                f"Kullanıcının isteğine göre doğru dosyayı seç ve işleme devam et."
-            )
-            self._process(prompt, depth + 1)
-        else:
-            self.app.log(f"SİSTEM HATA: Klasör bulunamadı → {path}", "red")
-        return True
- 
-    def _handle_write_file(self, response: str) -> bool:
-        m = PATTERNS["dosya_yaz"].search(response)
-        if not m:
-            return False
-        raw_path = m.group(1).strip()
-        path = akilli_yol_cozucu(raw_path)
-        code = m.group(2).strip()
-        try:
-            folder = os.path.dirname(path)
-            if folder:
-                os.makedirs(folder, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(code)
-            self.app.log(f"SİSTEM: Dosya yazıldı → {path}", "green")
-        except Exception as e:
-            self.app.log(f"SİSTEM HATA (Dosya Yazma): {e}", "red")
-        return True
- 
-    def _handle_run_code(self, response: str, depth: int) -> bool:
-        m = PATTERNS["kodu_calistir"].search(response)
-        if not m:
-            return False
-        path = akilli_yol_cozucu(m.group(1))
+            self.app.log(f"SİSTEM: Klasör tarandı → {path}", "green")
+            return f"Klasör İçeriği: {files}"
+        return "Belirtilen yol bir klasör değil veya bulunamadı."
+
+    # ── Dosya yazma ────────────────────────────────────────────────────
+    def _tool_write_file(self, path: str, code: str) -> str:
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(code)
+        self.app.log(f"SİSTEM: Dosya yazıldı → {path}", "green")
+        return f"Kod başarıyla '{path}' konumuna kaydedildi."
+
+    # ── Kod Çalıştırma ────────────────────────────────────────────────────
+    def _tool_run_code(self, path: str) -> str:
         self.app.log(f"SİSTEM: '{path}' çalıştırılıyor...", "green")
         result = kodu_calistir(path)
         if result["basarili"]:
-            self.app.log(f"SİSTEM ✅ Başarılı:\n{result['cikti']}", "green")
-        elif depth < MAX_DEPTH:
-            self.app.log("SİSTEM ⚠️ Hata tespit edildi, Ghost düzeltiyor...", "red")
-            prompt = (
-                f"GİZLİ SİSTEM BİLGİSİ: '{path}' çalıştırdım, hata:\n\n{result['hata']}\n\n"
-                f"Önce [DOSYA_OKU: {path}] ile oku, hatayı düzelt ve SADECE şu formatla kaydet:\n"
-                f"[DOSYA_YAZ: {path}]\n<<<KOD_BASLANGIC>>>\n(kod)\n<<<KOD_BITIS>>>\n"
-                f"Sonra [KODU_CALISTIR: {path}] ile test et."
-            )
-            self._process(prompt, depth + 1)
-        else:
-            self.app.log(f"SİSTEM: 2 deneme başarısız. Son hata:\n{result['hata']}", "red")
-        return True
- 
-    def _handle_read_file(self, response: str, user_input: str, depth: int):
-        m = PATTERNS["dosya_oku"].search(response)
-        if not m or "GİZLİ SİSTEM BİLGİSİ" in user_input:
-            return
-        path = akilli_yol_cozucu(m.group(1))
+            self.app.log(f"SİSTEM ✅ Başarılı:\n{result['cikti'][:100]}...", "green")
+            return f"Kod başarıyla çalıştı. Çıktı:\n{result['cikti']}"
+        
+        self.app.log("SİSTEM ⚠️ Hata tespit edildi...", "red")
+        return f"Kod çalıştırılırken hata verdi. Lütfen hatayı inceleyip düzelt:\n{result['hata']}"
+
+    # ── Dosya Okuma ────────────────────────────────────────────────────
+    def _tool_read_file(self, path: str) -> str:
         if os.path.isfile(path):
-            try:
-                content = open(path, encoding="utf-8").read()
-                self.app.log(f"SİSTEM: '{path}' okundu, Ghost analiz ediyor...", "green")
-                prompt = (
-                    f"GİZLİ SİSTEM BİLGİSİ: '{path}' dosyasının içeriği:\n\n{content}\n\n"
-                    f"Kullanıcının isteğine dön ve bu içeriğe göre hareket et.\n"
-                    f"Kod değiştirilecekse SADECE şu formatı kullan:\n"
-                    f"[DOSYA_YAZ: {path}]\n<<<KOD_BASLANGIC>>>\n(yeni_kod)\n<<<KOD_BITIS>>>\n"
-                    f"Sadece soru sorulduysa DOSYA_YAZ ETİKETİNİ KULLANMA, Türkçe cevapla."
-                )
-                self._process(prompt, depth + 1)
-            except Exception as e:
-                self.app.log(f"SİSTEM HATA (Dosya Okuma): {e}", "red")
-        else:
-            folder = os.path.dirname(path)
-            if os.path.isdir(folder):
-                files = ", ".join(os.listdir(folder)) or "Klasör boş."
-                self.app.log("SİSTEM HATA: Dosya bulunamadı! Klasör röntgenleniyor...", "red")
-                prompt = (
-                    f"GİZLİ SİSTEM BİLGİSİ: '{path}' dosyası YOK. "
-                    f"Klasörde şunlar var: {files}. "
-                    f"Kullanıcıya dosyanın olmadığını söyle ve mevcut dosyaları listele, hangisine bakacağını sor."
-                )
-            else:
-                self.app.log("SİSTEM HATA: Klasör yolu da geçersiz!", "red")
-                prompt = f"GİZLİ SİSTEM BİLGİSİ: '{path}' tamamen geçersiz bir yol. Kullanıcıya bildir."
+            content = open(path, encoding="utf-8").read()
+            self.app.log(f"SİSTEM: '{path}' okundu.", "green")
+            return f"Dosya İçeriği:\n{content}"
             
-            self._process(prompt, depth + 1)
+        # Dosya yoksa, klasörü kontrol et
+        folder = os.path.dirname(path)
+        if os.path.isdir(folder):
+            files = ", ".join(os.listdir(folder)) or "Klasör boş."
+            return f"Hedeflenen dosya bulunamadı. Klasörün içindeki mevcut dosyalar: {files}"
+            
+        return "Dosya veya dizin tamamen geçersiz."
