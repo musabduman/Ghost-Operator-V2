@@ -81,10 +81,10 @@ class ChatLLM(BaseLLM):
             "model": self.model,
             "messages": self.mesaj_gecmisi,
             "stream": False,
-            "options": {"temperature": 0.4, "num_ctx": 4096}
+            "options": {"temperature": 0.7, "num_ctx": 4096}
         }
         try:
-            response = requests.post(self.api_url, json=payload, timeout=60)
+            response = requests.post(self.api_url, json=payload, timeout=90)
             response.raise_for_status() 
             res = response.json()["message"]["content"].strip()
             self.mesaj_gecmisi.append({"role": "assistant", "content": res})
@@ -150,8 +150,8 @@ class QwenWorker:
 # 3. ORKESTRA ŞEFİ
 class GhostController():
     def __init__(self, api_key=None): 
-        self.supervisor = ChatLLM(model="gpt-oss:20b-cloud") 
-        self.worker = QwenWorker(model="gpt-oss:120b-cloud")
+        self.supervisor = ChatLLM(model="gpt-oss:120b-cloud") 
+        self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
     
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")
@@ -174,7 +174,7 @@ class GhostController():
     
     def generate(self, user_input):
         cevap = self.supervisor.generate(user_input)
-        aktif_model = "GPT-OSS 20B (Yönetici)"
+        aktif_model = "GPT-OSS 120B (Yönetici)"
         
         kod_istegi_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', cevap, flags=re.DOTALL | re.IGNORECASE)
         
