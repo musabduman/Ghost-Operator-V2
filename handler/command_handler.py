@@ -68,11 +68,19 @@ class CommandHandler:
         ).start()
     
     def _orchestrate_task(self, user_input):
-        """Hızlı onay ve ağır planlama işlemlerini AYNI ANDA paralel başlatır."""
-        # 1. Hızlı Onay (Ön-mesaj) motorunu ayrı bir koldan ateşle
-        threading.Thread(target=self._quick_ack, args=(user_input,), daemon=True).start()
+        # 1. Kelimeleri ayır ve TAM eşleşme ara (Böylece "karar" kelimesi içindeki "ara" hecesi sistemi tetiklemez)
+        eylem_kelimeleri = {"aç", "yaz", "oluştur", "ara", "çal", "kapat", "sil", "kur", "incele", "oku", "çalıştır", "bul", "test"}
+        kelimeler = set(user_input.lower().split())
+        is_action = bool(kelimeler.intersection(eylem_kelimeleri))
         
-        # 2. HİÇ BEKLEMEDEN (Paralel olarak) ağır planlama motorunu ana koldan ateşle
+        # 2. Eğer fiziksel bir komut yoksa, Planlayıcıyı HİÇ YORMA!
+        if not is_action:
+            self.app.set_model_label("Aktif Zeka: Sohbet Ediyor...")
+            self._process(user_input, is_background=False)
+            return
+
+        # 3. Eğer fiziksel komut varsa, eski ağır sanayi sistemini çalıştır
+        threading.Thread(target=self._quick_ack, args=(user_input,), daemon=True).start()
         self._plan_and_execute(user_input)
 
     def _quick_ack(self, user_input):
