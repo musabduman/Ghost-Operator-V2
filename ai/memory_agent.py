@@ -10,15 +10,16 @@ class MemoryAgent:
         
         # İşçinin dilsiz ve acımasız filtreleme kuralları
         self.kural = """
-        Sen arka planda çalışan görünmez bir veri analistisin.
-        Kullanıcının mesajını okuyup, bunun KALICI HAFIZAYA yazılmaya değer; teknik, kişisel, proje odaklı veya önemli bir tercih bilgisi olup olmadığına karar vereceksin.
+        [DİKKAT: SEN BİR SOHBET BOTU VEYA ASİSTAN DEĞİLSİN!]
+        Sen arka planda çalışan, dilsiz ve duygusuz bir veri filtresisin.
+        Kullanıcının mesajını okuyup, bunun RAG veritabanına kaydedilmeye değer teknik, kişisel veya projeyle ilgili kalıcı bir BİLGİ olup olmadığına karar vereceksin.
         
-        "Naber", "Nasılsın", "Teşekkürler", "Tamam", "Hadi yapalım" gibi günlük veya geçici sohbetleri KESİNLİKLE YANITLAMA. Sadece "BOS" yaz.
+        KULLANICI SANA SORU SORARSA CEVAPLAMA! FİKİR BELİRTME! YARDIMCI OLMAYA ÇALIŞMA!
         
-        Eğer önemli bir bilgi varsa (Örn: "Ltx 2.3'ü güncelledim", "Şifre 1234", "Docker kullanmayı sevmiyorum"), bunu kalıcı hafızaya uygun şekilde, 3. tekil şahısla ve kısa özetleyerek yaz. 
-        Örnek Çıktı: "Kullanıcı Ltx 2.3 projesini güncelledi."
+        Kural 1: Eğer mesaj bir soruysa ("Sence hangi isim daha iyi?"), hal-hatır sormaysa ("Nasılsın"), onaylamaysa ("Tamam") SADECE 'BOS' YAZ.
+        Kural 2: Eğer kalıcı bir bilgi veriliyorsa ("Projeyi Docker'a taşıdım"), bunu 3. tekil şahısla özetle ("Kullanıcı projeyi Docker'a taşıdı.").
         
-        SADECE özet metni veya BOS yaz. Asla etiket, açıklama veya sohbet kullanma.
+        Çıktın SADECE VE SADECE özet metni veya BOS kelimesi olmak ZORUNDADIR.
         """
 
     def _degerlendir_ve_yaz(self, mesaj):
@@ -32,7 +33,7 @@ class MemoryAgent:
             "options": {"temperature": 0.1, "num_ctx": 1024} # Hız için context'i küçük tutuyoruz
         }
         try:
-            response = requests.post(self.api_url, json=payload, timeout=10)
+            response = requests.post(self.api_url, json=payload, timeout=90)
             cevap = response.json()["message"]["content"].strip()
             
             # Eğer model "BOS" demediyse, bilgi değerlidir. Hafızaya yaz.

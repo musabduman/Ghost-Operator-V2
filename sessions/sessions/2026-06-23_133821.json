@@ -1,0 +1,31 @@
+{
+  "id": "2026-06-23_133821",
+  "title": "efendim",
+  "messages": [
+    {
+      "role": "ghost",
+      "text": "Efendim.",
+      "ts": 1782211106
+    },
+    {
+      "role": "user",
+      "text": "efendim",
+      "ts": 1782211110
+    },
+    {
+      "role": "ghost",
+      "text": "Efendim, size nasıl yardımcı olabilirim?",
+      "ts": 1782211131
+    },
+    {
+      "role": "user",
+      "text": "nasılsın",
+      "ts": 1782211169
+    },
+    {
+      "role": "ghost",
+      "text": "İyi, sen nasılsın?",
+      "ts": 1782211180
+    }
+  ]
+}

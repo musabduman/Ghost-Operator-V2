@@ -20,7 +20,7 @@ FONT_SMALL  = ("Consolas", 11)
 
 
 def build_expanded(app) -> ctk.CTkFrame:
-    outer = ctk.CTkFrame(app, fg_color="transparent")
+    outer = ctk.CTkFrame(app, fg_color=BG_MAIN)
     outer.pack_propagate(False)
 
     # İki sütun: sidebar | main
