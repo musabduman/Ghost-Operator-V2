@@ -4,6 +4,7 @@ build_compact(app) çağrıldığında frame döner, app.main_frame'e pack edili
 """
 import customtkinter as ctk
 from ui.ui import build_log_box, build_entry, build_media_buttons, build_screenshot_button
+from vison.screenshot import screenshot_al_ve_yorumla
 
 CLR_ACCENT  = "#00FFcc"
 BG_MAIN     = "#0d0d0d"
@@ -37,8 +38,9 @@ def build_compact(app) -> ctk.CTkFrame:
 
     # Ekran yorumla butonu
     app.ss_button = build_screenshot_button(frame)
+    app.ss_button.configure(command=lambda: screenshot_al_ve_yorumla(app))
     app.ss_button.pack(pady=(0, 8))
-
+    
     # Log kutusu
     app.log_text = build_log_box(frame)
     app.log_text.pack(pady=5, padx=20)
