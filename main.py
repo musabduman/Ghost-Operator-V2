@@ -158,13 +158,21 @@ class GhostOperatorUI(ctk.CTk):
         if self._expanded:
             append_chat_bubble(self, role, text)
         else:
-            prefix = "[Sen]" if role == "user" else "[Ghost]"
+            #prefix = "[Sen]" if role == "user" else "[Ghost]"
             tag = "green" if role == "ghost" else ""
-            self.log(f"{prefix}: {text}", tag)
-        
-        if role=='user':
-            self.memory_agent.asenkron_kaydet(text)
+            #self.log(f"{prefix}: {text}", tag)
     
+        # Ghost cevabından sonra çift mesajı birlikte gönder (daha iyi context)
+        if role == "ghost":
+            # Son user mesajını bul
+            user_msg = next(
+                (m["text"] for m in reversed(self._messages[:-1]) if m["role"] == "user"),
+                ""
+            )
+            if user_msg:
+                combined = f"Kullanıcı: {user_msg}\nGhost: {text}"
+                self.memory_agent.asenkron_kaydet(combined)
+                
     # ── Log (compact modda kullanılır) ────────────────────────────────────────
     def log(self, text: str, tag: str = ""):
         # EĞER MESAJ BİR SİSTEM BİLGİSİYSE, SADECE TERMİNALE BAS VE ÇIK
@@ -204,7 +212,7 @@ class GhostOperatorUI(ctk.CTk):
 
     def _startup_sequence(self):
         self.log("[SİSTEM]: Uyanış protokolü başlatıldı...", "green")
-        self.set_model_label("Aktif Zeka: Sistem Uyanıyor...")
+        self.set_model_label("Aktif Durum: Sistem Uyanıyor...")
         threading.Thread(target=self.command_handler.run_startup, daemon=True).start()
 
     # ── Lock & Kapatma ────────────────────────────────────────────────────────

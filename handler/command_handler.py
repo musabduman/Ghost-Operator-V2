@@ -12,7 +12,6 @@ import threading
 import queue
 import subprocess   
 
-from pyinstrument import Profiler
 from hafıza.rag_hafıza import Bellek
 from ai.llm import GhostController, ChatLLM
 from tools.google_tool import ghost_search_tool
@@ -42,7 +41,6 @@ class CommandHandler:
         self.su_an_mesgul = False  
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
- 
     def handle(self, event=None):
         """Entry'deki komutu alıp işleme döngüsünü başlatır."""
         self.son_komut_sesli = (event is None)
@@ -59,7 +57,7 @@ class CommandHandler:
         self.app.record_message("user", user_input)
         self.app.entry.delete(0, "end")
         #self.app.record_message("Ghost", "Düşünüyor...")
-        self.app.set_model_label("Aktif Zeka: Yönlendiriliyor...")
+        self.app.set_model_label("Aktif Durum: Yönlendiriliyor...")
  
         threading.Thread(
             target=self._orchestrate_task,
@@ -75,7 +73,7 @@ class CommandHandler:
         
         # 2. Eğer fiziksel bir komut yoksa, Planlayıcıyı HİÇ YORMA!
         if not is_action:
-            self.app.set_model_label("Aktif Zeka: Sohbet Ediyor...")
+            self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
             self._process(user_input, is_background=False)
             return
 
@@ -85,7 +83,7 @@ class CommandHandler:
 
     def _quick_ack(self, user_input):
         """Claude'un temiz yapısı: Sadece ön-mesajı üretir ve seslendirir."""
-        self.app.set_model_label("Aktif Zeka: Operasyon Başlıyor...")
+        self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
         on_mesaj_prompt = (
             f"GİZLİ SİSTEM BİLGİSİ: Kullanıcı senden şu işi istedi: '{user_input}'. "
             f"Sen şu an arka planda bu işin planlamasını ve hazırlığını yapıyorsun. "
@@ -132,9 +130,6 @@ class CommandHandler:
             
         action_taken = False
         
-        profiler=Profiler()
-        profiler.start()
-        
         try:
             enriched = self._enrich_with_memory(user_input) 
             response, model = self.controller(enriched)
@@ -179,7 +174,6 @@ class CommandHandler:
             self.app.log(f"SİSTEM HATA:\n{traceback.format_exc()}", "red")
         
         finally:
-            profiler.stop()
             if on_done:
                 on_done.set()
 
@@ -233,22 +227,17 @@ class CommandHandler:
  
     def _update_model_label(self, model: str):
         color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
-        self.app.set_model_label(f"Aktif Zeka: {model}", color)
+        self.app.set_model_label(f"Aktif Durum: {model}", color)
     
     # ── Planlama ve Yürütme ──────────────────────────────────────────────
     
     def _plan_and_execute(self, user_input: str):
-        self.app.set_model_label("Aktif Zeka: Planlayıcı Düşünüyor...")
+        self.app.set_model_label("Aktif Durum: Planlayıcı Düşünüyor...")
         
-        profiler=Profiler()
-        profiler.start()
-
         adimlar = self.planner.plan_olustur(user_input)
         
         self.app.log(f"SİSTEM: Operasyon planlandı. ({len(adimlar)} Adım)", "green")
         
-        profiler.stop()
-
         if len(adimlar) > 1:
             self.app.log_collapsible_plan(adimlar)
 
@@ -293,7 +282,7 @@ class CommandHandler:
             self.islem_kuyrugu.task_done()
             
         self.su_an_mesgul = False
-        self.app.set_model_label("Aktif Zeka: Bekliyor...")
+        self.app.set_model_label("Aktif Durum: Bekliyor...")
 
     # ── Google arama yapabilme ────────────────────────────────────────────────────
 

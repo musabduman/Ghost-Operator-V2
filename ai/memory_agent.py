@@ -16,14 +16,27 @@ class MemoryAgent:
             - Evet → tek cümleyle özetle, 3. şahısla yaz
             - Hayır → sadece BOS yaz
 
-            Kalıcı bilgi örnekleri:
-            - "Projeyi Python 3.11'e geçirdim" → "Kullanıcı projeyi Python 3.11'e geçirdi."
-            - "Adım Musab" → "Kullanıcının adı Musab'dır."
-
             BOS olacak örnekler:
             - Sorular, selamlaşma, onaylama, komutlar
 
             SADECE özet veya BOS yaz. Başka hiçbir şey yazma.
+
+            ÖRENKELER:
+            Aşağıdaki örneklere göre etiketle:
+
+            Mesaj: "Nasılsın?"
+            Çıktı: BOS
+
+            Mesaj: "Ghost Operator'ı Ollama ile entegre ettim."
+            Çıktı: Kullanıcı Ghost Operator'ı Ollama ile entegre etti.
+
+            Mesaj: "Tamam anladım"
+            Çıktı: BOS
+
+            Mesaj: "RTX 4050 kullanıyorum"
+            Çıktı: Kullanıcının GPU'su RTX 4050'dir.
+
+            Şimdi etiketle:
             """
         
     def _degerlendir_ve_yaz(self, mesaj):

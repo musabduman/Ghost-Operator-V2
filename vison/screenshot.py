@@ -2,9 +2,10 @@ import base64
 import PIL.ImageGrab
 import os
 import threading
-import pytesseract
 
+# Vison modülünü doğru yoldan import ettiğinden emin ol
 from vison.vison import groq_vision_analiz
+
 def screenshot_çek(self, kayit_yolu, soru):
     try:
         ekran = PIL.ImageGrab.grab(all_screens=True)
@@ -20,28 +21,31 @@ def screenshot_çek(self, kayit_yolu, soru):
         if not soru:
             soru = "Bu ekran görüntüsünde ne var? Kısaca özetle."
 
-        self.log_text.insert("end", f"\n📸 Screenshot alındı. Ghost analiz ediyor...\n")
+        # UI Kuralı: Sistemi log yerine doğrudan chat balonuna yansıt
+        self.record_message("ghost", "📸 Screenshot alındı. Gözlerimi açıyorum, bekle Patron...")
         self.update()
             
         def vision_istegi():
-            kod_bulundu_mu, saf_kod, mesaj= groq_vision_analiz(soru, kayit_yolu)
-            if kod_bulundu_mu:
-                self.after(0, lambda: self.log_text.insert("end", f"SİSTEM: Groq ekranda kod tespit etti! Uzman modele paslanıyor...\n", "green"))
+            kod_bulundu_mu, saf_kod, mesaj = groq_vision_analiz(soru, kayit_yolu)
             
-            # GUI GÜNCELLEMELERİ ANA THREAD'E YÖNLENDİRİLDİ
-            self.after(0, lambda: self.log_text.insert("end", f"Ghost (Vision): {mesaj}\n"))
-            self.after(0, lambda: self.log_text.see("end"))
+            if kod_bulundu_mu:
+                self.after(0, lambda: self.log("SİSTEM: Groq ekranda kod tespit etti!", "green"))
+            
+            # CEVABI DOĞRUDAN CHAT BALONUNA (SOHBETE) BASIYORUZ
+            self.after(0, lambda: self.record_message("ghost", mesaj))
+            
+            # Eğer sesli mod açıksa Nova bunu okusun
+            if self.voice_mode:
+                self.konus.speak(mesaj)
     
         threading.Thread(target=vision_istegi, daemon=True).start()
 
     except Exception as e:
         self.deiconify()
-        self.log_text.insert("end", f"SİSTEM HATA: Screenshot alınamadı. {e}\n")
-        self.log_text.see("end")
+        self.after(0, lambda: self.log(f"SİSTEM HATA: Screenshot alınamadı. {e}", "red"))
 
 def screenshot_al_ve_yorumla(self, soru=None):
     kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_screenshot.png")
     
-    # Ghost'u küçült, ekranı yakala, geri aç
     self.iconify()
     self.after(300, lambda: screenshot_çek(self, kayit_yolu, soru))

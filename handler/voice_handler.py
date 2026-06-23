@@ -32,6 +32,7 @@ class VoiceHandler:
 
     def start_listening(self):
         """Mikrofonu arka planda dinlemeye başlar."""
+        self.app.voice_mode = True
         self.app.entry.configure(placeholder_text="🎙️ Ghost Dinliyor... (Konuş)")
         self.app.update()
         threading.Thread(target=self._listen_loop, daemon=True).start()
