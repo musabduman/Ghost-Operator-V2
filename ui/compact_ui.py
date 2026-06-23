@@ -31,7 +31,7 @@ def build_compact(app) -> ctk.CTkFrame:
         width=160, height=24,
         font=("Consolas", 11),
         fg_color="transparent", hover_color="#1a1a1a",
-        text_color="#666666", border_width=1, border_color="#1e1e1e",
+        text_color="#666666", border_width=1, border_color="#a3a3a3",
         command=app.expand_mode
     )
     toggle_btn.pack(pady=(0, 8))

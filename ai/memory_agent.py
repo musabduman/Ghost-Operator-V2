@@ -3,7 +3,7 @@ import requests
 from hafıza.rag_hafıza import Bellek
 
 class MemoryAgent:
-    def __init__(self, model="gpt-oss:120b"): # Buraya VRAM'i yormayacak hızlı bir model seçmeliyiz
+    def __init__(self, model="gpt-oss:120b-cloud"): # Buraya VRAM'i yormayacak hızlı bir model seçmeliyiz
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.bellek = Bellek()
@@ -51,8 +51,12 @@ class MemoryAgent:
         }
         try:
             response = requests.post(self.api_url, json=payload, timeout=90)
-            cevap = response.json()["message"]["content"].strip()
+            data = response.json()
             
+            print(f"[HAFIZA DEBUG]: {data}")
+
+            cevap = data["message"]["content"].strip()
+
             # Eğer model "BOS" demediyse, bilgi değerlidir. Hafızaya yaz.
             if cevap != "BOS" and "BOS" not in cevap:
                 self.bellek.bellege_yaz(cevap)
