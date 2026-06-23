@@ -7,6 +7,7 @@ import threading
 import time
 import pygame
 
+from ai.memory_agent import MemoryAgent
 from handler.voice_handler import VoiceHandler
 from handler.command_handler import CommandHandler
 from ai.konus import GhostSpeech
@@ -45,6 +46,7 @@ class GhostOperatorUI(ctk.CTk):
         self.konus           = GhostSpeech(self)
         self.voice_handler   = VoiceHandler(self)
         self.signal_watcher  = SignalWatcher(self)
+        self.memory_agent    = MemoryAgent()
 
         # ── Pencere + UI ──────────────────────────────────────────────────────
         self._setup_window()
@@ -159,10 +161,18 @@ class GhostOperatorUI(ctk.CTk):
             prefix = "[Sen]" if role == "user" else "[Ghost]"
             tag = "green" if role == "ghost" else ""
             self.log(f"{prefix}: {text}", tag)
-
+        
+        if role=='user':
+            self.memory_agent.asenkron_kaydet(text)
+    
     # ── Log (compact modda kullanılır) ────────────────────────────────────────
-
     def log(self, text: str, tag: str = ""):
+        # EĞER MESAJ BİR SİSTEM BİLGİSİYSE, SADECE TERMİNALE BAS VE ÇIK
+        if "SİSTEM" in text:
+            print(text)
+            return
+
+        # SİSTEM DEĞİLSE (Yani normal sohbetse) EKRANA YAZ
         def _write():
             if hasattr(self, "log_text") and self.log_text.winfo_exists():
                 self.log_text.insert("end", text + "\n", tag)
@@ -170,38 +180,14 @@ class GhostOperatorUI(ctk.CTk):
         self.after(0, _write)
 
     def log_collapsible_plan(self, adimlar: list):
-        def _build():
-            import time as _time
-            if not hasattr(self, "log_text") or not self.log_text.winfo_exists():
-                # Expanded modda sadece düz metin yaz
-                for i, adim in enumerate(adimlar, 1):
-                    append_chat_bubble(self, "ghost", f"Adım {i}: {adim}")
-                return
-            tag_name = f"plan_{int(_time.time() * 1000)}"
-            self.log_text.tag_config(tag_name, elide=True, foreground="#888888")
-            state = {"hidden": True}
-            def toggle():
-                state["hidden"] = not state["hidden"]
-                self.log_text.tag_config(tag_name, elide=state["hidden"])
-                btn.configure(text="▼ Düşünme sürecini gizle" if not state["hidden"] else "▶ Düşünme sürecini göster")
-                self.log_text.see("end")
-            btn = ctk.CTkButton(
-                self.log_text,
-                text="▶ Düşünme sürecini göster",
-                command=toggle,
-                width=180, height=20,
-                fg_color="transparent", hover_color="#2a2a2a", text_color="#aaaaaa",
-                font=("Consolas", 11, "italic"), anchor="w"
-            )
-            self.log_text.insert("end", "\n")
-            self.log_text.window_create("end", window=btn)
-            self.log_text.insert("end", "\n")
-            for i, adim in enumerate(adimlar, 1):
-                prefix = "   └─" if i == len(adimlar) else "   ├─"
-                self.log_text.insert("end", f"{prefix} Adım {i}: {adim}\n", tag_name)
-            self.log_text.see("end")
-        self.after(0, _build)
-
+        # PLANLARI EKRANDA GİZLE/GÖSTER YAPMAK YERİNE DOĞRUDAN TERMİNALE BASIYORUZ
+        print("\n" + "="*40)
+        print("🛠️ OPERASYON PLANI:")
+        for i, adim in enumerate(adimlar, 1):
+            prefix = "   └─" if i == len(adimlar) else "   ├─"
+            print(f"{prefix} Adım {i}: {adim}")
+        print("="*40 + "\n")
+        
     def set_model_label(self, text: str, color: str = "#888888"):
         self.after(0, lambda: self.model_label.configure(text=text, text_color=color))
 
