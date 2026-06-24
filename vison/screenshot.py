@@ -4,7 +4,7 @@ import os
 import threading
 
 # Vison modülünü doğru yoldan import ettiğinden emin ol
-from vison.vison import groq_vision_analiz
+from vison.vison import llava_vision_analiz
 
 def screenshot_çek(self, kayit_yolu, soru):
     try:
@@ -26,7 +26,7 @@ def screenshot_çek(self, kayit_yolu, soru):
         self.update()
             
         def vision_istegi():
-            kod_bulundu_mu, saf_kod, mesaj = groq_vision_analiz(soru, kayit_yolu)
+            kod_bulundu_mu, saf_kod, mesaj = llava_vision_analiz(soru, kayit_yolu)
             
             if kod_bulundu_mu and saf_kod:
                 # Kodu + kullanıcı sorusunu ana modele (120b) ilet

@@ -20,6 +20,11 @@ PATTERNS = {
     "dosya_oku":     re.compile(r'\[\s*DOSYA_OKU\s*:\s*(.*?)\s*\]', re.IGNORECASE),
     "kodu_calistir": re.compile(r'\[\s*KODU_CALISTIR\s*:\s*(.*?)\s*\]', re.IGNORECASE),
     "klasor_incele": re.compile(r'\[\s*KLASOR_INCELE\s*:\s*(.*?)\s*\]', re.IGNORECASE),
+    # Format: [TARAYICI_TIKLA: url | buton_adi]
+    "tarayici_tikla": re.compile(r'\[\s*TARAYICI_TIKLA\s*:\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
+    
+    # Format: [TARAYICI_YAZ: url | kutu_adi | yazilacak_metin]
+    "tarayici_yaz": re.compile(r'\[\s*TARAYICI_YAZ\s*:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
     
     # ── Tarayıcı ve Masaüstü Gözlem Aracı ─────────────────────────────────────
     "gozlem_yap": re.compile(r'\[\s*GOZLEM_YAP\s*:\s*(.*?)\s*\]', re.IGNORECASE),
