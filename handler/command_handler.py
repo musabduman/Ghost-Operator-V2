@@ -57,7 +57,11 @@ class CommandHandler:
             "kodu_calistir": {"func": self._tool_run_code, "yol_coz": True, "param_count": 1},
             "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
             "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2}, # 2 Parametreli tek araç
-            "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1}
+            "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1},
+            # Format: [TARAYICI_TIKLA: url | buton_adi]
+            "tarayici_tikla": re.compile(r'\[\s*TARAYICI_TIKLA\s*:\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
+            # Format: [TARAYICI_YAZ: url | kutu_adi | yazilacak_metin]
+            "tarayici_yaz": re.compile(r'\[\s*TARAYICI_YAZ\s*:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
         }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -137,7 +141,7 @@ class CommandHandler:
         
         # Sonsuz döngü koruması: Ghost'un aynı aracı üst üste çağırmasını engeller
         gecmis_arac_cagrilari = set() 
-        final_mesaji=""
+        final_mesaji = ""
 
         for adim in range(5):  # max 5 adım, sonsuz döngü önlemi
             response, model = self.controller._raw_supervisor_call()
@@ -147,23 +151,23 @@ class CommandHandler:
             sonuc = self._araclari_calistir(response)
 
             if sonuc is None:
-                # ÇIKIŞ ŞARTI: Eğer response içinde hiçbir [ETİKET] yoksa, 
-                # Ghost aracı bırakmış ve konuşmaya başlamış demektir!
+                # ÇIKIŞ ŞARTI: Etiket yoksa işlem başarıyla bitmiştir.
                 final_mesaji = self._clean_response_for_display(response)
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
                     self.app.konus.speak(final_mesaji)
                 break
             
-            # KORUMA: Ghost aynı aracı, aynı parametrelerle tekrar çağırdıysa döngüyü kır!
+            # KORUMA: Ghost aynı aracı tekrar çağırdıysa
             if response in gecmis_arac_cagrilari:
                 self.app.log("SİSTEM UYARISI: Ghost aynı aracı tekrar denedi, döngü kırılıyor.", "red")
-                self.app.record_message("ghost", "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?")
-                return
+                final_mesaji = "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?"
+                self.app.record_message("ghost", final_mesaji)
+                break # <--- İŞTE SİLDİĞİN VE EKRANI SPAMLEYEN O EKSİK KOMUT
+                
             gecmis_arac_cagrilari.add(response)
             
-            # CRITICAL FIX: Araç sonucunu "USER" değil, "SYSTEM" olarak modele besle!
-            # Modele aynı zamanda işi bittiyse etiket kullanmaması gerektiğini hatırlat.
+            # Araç sonucunu "SYSTEM" olarak modele besle
             self.controller.supervisor.mesaj_gecmisi.append({
                 "role": "system",
                 "content": (
@@ -174,17 +178,20 @@ class CommandHandler:
                 )
             })
         
-        # Eğer 4adımı doldurursa sistemi yormamak için nazikçe durdur
-        self.app.log("SİSTEM: Maksimum işlem adımı aşıldı (5/5).", "red")
-        final_mesaji="Patron, bu işlem beklediğimden çok daha uzun sürdü."
+        # SİNSİ BUG'IN ÇÖZÜMÜ: Sadece final_mesaji boşsa (yani 5 adım başarısız dolduysa) uyar
+        if not final_mesaji:
+            self.app.log("SİSTEM: Maksimum işlem adımı aşıldı (5/5).", "red")
+            final_mesaji = "Patron, bu işlem beklediğimden çok daha uzun sürdü. Sistemi yormamak için durdurdum."
+            self.app.record_message("ghost", final_mesaji)
+            
+        # Hafızayı ilk temiz haline döndür
         self.controller.supervisor.mesaj_gecmisi = orijinal_hafiza_yedegi
         
-        # Sadece asıl soruyu ve final temiz cevabı ana hafızaya ekl
+        # Sadece asıl soruyu ve döngüden çıkan o tek temiz cevabı ana hafızaya ekle
         if final_mesaji:
             self.controller.supervisor.add_user(user_input)
             self.controller.supervisor.add_assistant(final_mesaji)
-        
-
+                
     def _araclari_calistir(self, response: str) -> str | None:
         """Metin içindeki tüm araçları sırayla çalıştırıp yapılandırılmış sonuç (OBSERVATION) döner."""
         bulunan_araclar = []
@@ -277,7 +284,6 @@ class CommandHandler:
         )
  
     # ── Ekran temizliği ───────────────────────────────────────────────────────
- 
     @staticmethod
     def _clean_response_for_display(response: str) -> str:
         # 1. Mühendis kod bloklarını şık ikonlara çevir
@@ -308,15 +314,20 @@ class CommandHandler:
     def _update_model_label(self, model: str):
         color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
         self.app.set_model_label(f"Aktif Durum: {model}", color)
-
-    # ── Google arama yapabilme ────────────────────────────────────────────────────
-    def _tool_search(self, query: str) -> str:
-        self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
-        arama_sonuclari = ghost_search_tool(query) 
-        if arama_sonuclari:
-            return f"Arama Sonuçları:\n{arama_sonuclari}"
-        return "İnternette sonuç bulunamadı."
     
+    # ── Web sitesinde tıklama ──────────────────────────────────────────────
+    def _tool_browser_click(self, url: str, hedef_metin: str) -> str:
+        self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine tıklanıyor...", "green")
+        from tools.browser_tool import browser_interact
+        return browser_interact(url, "tikla", hedef_metin)
+
+    # ── Web sitesinde yazma ──────────────────────────────────────────────
+    def _tool_browser_type(self, url: str, hedef_metin: str, yazi_icerigi: str) -> str:
+        self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine '{yazi_icerigi}' yazılıyor...", "green")
+        from tools.browser_tool import browser_interact
+        return browser_interact(url, "yaz", hedef_metin, yazi_icerigi)
+
+    # ── Web sitesi ve Masaüstünğ görebilme ──────────────────────────────────────────────
     def _tool_browser_observe(self, hedef: str) -> str:
         hedef = hedef.lower().strip()
         
@@ -351,6 +362,14 @@ class CommandHandler:
             
         except Exception as e:
             return f"Gözlem tamamen başarısız oldu: {str(e)}"
+
+    # ── Google arama yapabilme ────────────────────────────────────────────────────
+    def _tool_search(self, query: str) -> str:
+        self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
+        arama_sonuclari = ghost_search_tool(query) 
+        if arama_sonuclari:
+            return f"Arama Sonuçları:\n{arama_sonuclari}"
+        return "İnternette sonuç bulunamadı."
         
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
