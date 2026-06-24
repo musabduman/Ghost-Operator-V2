@@ -39,6 +39,22 @@ class CommandHandler:
         self.planner = PlannerAgent()
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
+        
+        # Araç Kayıt Defteri (Tool Registry)
+        # Format: "pattern_adi": (çalışacak_fonksiyon, yol_cozucu_kullanilsin_mi, parametre_sayisi)
+        self.TOOL_REGISTRY = {
+            "arama": {"func": self._tool_search, "yol_coz": False, "param_count": 1},
+            "klasor_ac": {"func": self._tool_open_folder, "yol_coz": True, "param_count": 1},
+            "uygulama_ac": {"func": self._tool_open_app, "yol_coz": False, "param_count": 1},
+            "sarki_ac": {"func": self._tool_play_song, "yol_coz": False, "param_count": 1},
+            "playlist_ac": {"func": self._tool_play_playlist, "yol_coz": False, "param_count": 1},
+            "not_al": {"func": self._tool_save_note, "yol_coz": False, "param_count": 1},
+            "klasor_yap": {"func": self._tool_make_folder, "yol_coz": True, "param_count": 1},
+            "klasor_incele": {"func": self._tool_inspect_folder, "yol_coz": True, "param_count": 1},
+            "kodu_calistir": {"func": self._tool_run_code, "yol_coz": True, "param_count": 1},
+            "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
+            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2} # 2 Parametreli tek araç
+        }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
     def handle(self, event=None):
@@ -110,71 +126,133 @@ class CommandHandler:
     # ── Ana işleme döngüsü ────────────────────────────────────────────────────
     def _agentic_loop(self, user_input: str):
         """Gerçek ReAct döngüsü — model bitmediğini söyleyene kadar döner."""
-        
-        # Araç sonuçlarını mesaj geçmişine ekleyerek modeli besle
+        orijinal_hafiza_yedegi = list(self.controller.supervisor.mesaj_gecmisi)
+
+        # Kullanıcının asıl sorusunu sisteme ekle
         self.controller.supervisor.add_user(user_input)
         
+        # Sonsuz döngü koruması: Ghost'un aynı aracı üst üste çağırmasını engeller
+        gecmis_arac_cagrilari = set() 
+        final_mesaji=""
+
         for adim in range(5):  # max 5 adım, sonsuz döngü önlemi
             response, model = self.controller._raw_supervisor_call()
             self._update_model_label(model)
 
             # Araç var mı kontrol et
             sonuc = self._araclari_calistir(response)
-            
+
             if sonuc is None:
-                # Araç yok = model bitti, kullanıcıya göster
-                display = self._clean_response_for_display(response)
-                self.app.record_message("ghost", display)
+                # ÇIKIŞ ŞARTI: Eğer response içinde hiçbir [ETİKET] yoksa, 
+                # Ghost aracı bırakmış ve konuşmaya başlamış demektir!
+                final_mesaji = self._clean_response_for_display(response)
+                self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
-                    self.app.konus.speak(display)
-                return
+                    self.app.konus.speak(final_mesaji)
+                break
             
-            # Araç sonucunu modele geri besle, döngü devam eder
+            # KORUMA: Ghost aynı aracı, aynı parametrelerle tekrar çağırdıysa döngüyü kır!
+            if response in gecmis_arac_cagrilari:
+                self.app.log("SİSTEM UYARISI: Ghost aynı aracı tekrar denedi, döngü kırılıyor.", "red")
+                self.app.record_message("ghost", "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?")
+                return
+            gecmis_arac_cagrilari.add(response)
+            
+            # CRITICAL FIX: Araç sonucunu "USER" değil, "SYSTEM" olarak modele besle!
+            # Modele aynı zamanda işi bittiyse etiket kullanmaması gerektiğini hatırlat.
             self.controller.supervisor.mesaj_gecmisi.append({
-                "role": "user",
-                "content": f"[ARAÇ SONUCU - Adım {adim+1}]: {sonuc}\nDevam et, gerekirse başka araç kullan."
+                "role": "system",
+                "content": (
+                    f"[SİSTEM BİLDİRİMİ - ARAÇ ÇIKTISI - ADIM {adim+1}]\n"
+                    f"{sonuc}\n\n"
+                    f"GİZLİ TALİMAT: Eğer görev tamamlandıysa ve kullanıcıya son cevabı vereceksen, "
+                    f"HİÇBİR [ETİKET] KULLANMA. Doğrudan doğal ve havalı karakterinle cevap yaz."
+                )
             })
         
-        self.app.log("SİSTEM: Maksimum adım aşıldı.", "red")
+        # Eğer 4adımı doldurursa sistemi yormamak için nazikçe durdur
+        self.app.log("SİSTEM: Maksimum işlem adımı aşıldı (5/5).", "red")
+        final_mesaji="Patron, bu işlem beklediğimden çok daha uzun sürdü."
+        self.controller.supervisor.mesaj_gecmisi = orijinal_hafiza_yedegi
+        
+        # Sadece asıl soruyu ve final temiz cevabı ana hafızaya ekl
+        if final_mesaji:
+            self.controller.supervisor.add_user(user_input)
+            self.controller.supervisor.add_assistant(final_mesaji)
+        
 
     def _araclari_calistir(self, response: str) -> str | None:
-        """Regex ile eşleşen ilk aracı çalıştırır ve sonucunu string döner."""
+        """Metin içindeki tüm araçları sırayla çalıştırıp yapılandırılmış sonuç (OBSERVATION) döner."""
+        bulunan_araclar = []
+
+        # 1. Bütün patternleri tara ve eşleşmeleri metindeki konumlarına göre listeye ekle
+        for pattern_adi, regex in PATTERNS.items():
+            if pattern_adi not in self.TOOL_REGISTRY:
+                continue
+            
+            # finditer ile metin içindeki tüm aynı ve farklı etiketleri bul
+            for match in regex.finditer(response):
+                bulunan_araclar.append({
+                    "isim": pattern_adi,
+                    "match": match,
+                    "baslangic_indeksi": match.start()
+                })
+
+        if not bulunan_araclar:
+            return None
+
+        # 2. Araçları modelin metne yazdığı sıraya (kronolojik) göre diz
+        bulunan_araclar.sort(key=lambda x: x["baslangic_indeksi"])
+
+        # Sonsuz döngü veya Ghost'un delirmesini önlemek için max 2 araç limiti
+        MAX_TOOL = 2
+        bulunan_araclar = bulunan_araclar[:MAX_TOOL]
+
+        sonuclar = []
         
-        # İstisna 1: Çift parametreli araç (Dosya Yazma)
-        m = PATTERNS["dosya_yaz"].search(response)
-        if m:
-            path = akilli_yol_cozucu(m.group(1).strip())
-            code = m.group(2).strip()
-            return self._tool_write_file(path, code)
-
-        # Diğer standart araçlar
-        # Format: (Pattern Adı, Çalıştırılacak Fonksiyon, Yol Çözücü Gerekli mi?)
-        standart_araclar = [
-            ("arama", self._tool_search, False),
-            ("klasor_ac", self._tool_open_folder, True),
-            ("uygulama_ac", self._tool_open_app, False),
-            ("sarki_ac", self._tool_play_song, False),
-            ("playlist_ac", self._tool_play_playlist, False),
-            ("not_al", self._tool_save_note, False),
-            ("klasor_yap", self._tool_make_folder, True),
-            ("klasor_incele", self._tool_inspect_folder, True),
-            ("kodu_calistir", self._tool_run_code, True),
-            ("dosya_oku", self._tool_read_file, True)
-        ]
-
-        for pattern_adi, func, yol_coz in standart_araclar:
-            m = PATTERNS[pattern_adi].search(response)
-            if m:
-                param = m.group(1).strip()
-                # Eğer araca giren veri bir dosya yoluysa, akıllı çözücüyü kullan
-                if yol_coz:
+        # 3. Araçları sırayla Ateşle
+        for adim, arac in enumerate(bulunan_araclar):
+            pattern_adi = arac["isim"]
+            m = arac["match"]
+            ayar = self.TOOL_REGISTRY[pattern_adi]
+            
+            # Parametreleri dinamik olarak çek
+            parametreler = []
+            for i in range(1, ayar["param_count"] + 1):
+                # Regex'i toleranslı (strip vb.) hale getir
+                param = m.group(i).strip()
+                # Yalnızca ilk parametre yol ise akıllı çözücüden geçir
+                if i == 1 and ayar["yol_coz"]: 
                     param = akilli_yol_cozucu(param)
-                try:
-                    return func(param)
-                except Exception as e:
-                    return f"Araç hatası ({pattern_adi}): {e}"
-                    
-        return None
+                parametreler.append(param)
+
+            try:
+                # Aracı çalıştır (*parametreler ile listeyi unpack yapıyoruz)
+                result = ayar["func"](*parametreler)
+                success = True
+            except Exception as e:
+                # LLM'in kafası karışmasın diye ona kısa mesaj
+                result = f"Araç çalışırken çöktü: {str(e)}"
+                success = False
+                
+                # Senin arka planda hatayı görebilmen için tam Traceback
+                self.app.log(f"SİSTEM HATA DETAYI ({pattern_adi}):\n{traceback.format_exc()}", "red")
+
+            # Sistem arayüzüne (Geliştirici paneline) detaylı log bas
+            self.app.log(f"🛠️ [ADIM {adim+1}/{len(bulunan_araclar)}] ARAÇ: {pattern_adi.upper()} | DURUM: {'✅' if success else '❌'}", "yellow")
+            self.app.log(f"   Param: {parametreler} | Çıktı: {str(result)[:50]}...", "yellow")
+
+            # 4. Modele Yapılandırılmış Geri Bildirim (Observation) oluştur
+            sonuclar.append(
+                f"OBSERVATION [Adım {adim+1}]:\n"
+                f"tool={pattern_adi}\n"
+                f"success={str(success).lower()}\n"
+                f"result={result}\n"
+                f"{'-'*20}"
+            )
+
+        # Tüm tool'ların sonucunu modele tek bir blok halinde gönder
+        return "\n".join(sonuclar)
     
     # ── Bellek zenginleştirme ─────────────────────────────────────────────────
     def _enrich_with_memory(self, user_input: str) -> str:
