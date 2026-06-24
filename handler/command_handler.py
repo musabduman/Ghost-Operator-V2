@@ -11,15 +11,18 @@ import traceback
 import threading
 import queue
 import subprocess   
+import PIL.ImageGrab
 
-from hafıza.rag_hafıza import Bellek
-from ai.llm import GhostController, ChatLLM
-from tools.google_tool import ghost_search_tool
 from handler.patterns import PATTERNS
-from kontrol.spotify import SpotifyManager
-from kontrol.güvenlik import guvenlik_kontrolu
-from kontrol.kontrol import google_arama
+from hafıza.rag_hafıza import Bellek
 from core.planner import PlannerAgent
+from kontrol.spotify import SpotifyManager
+from ai.llm import GhostController, ChatLLM
+from kontrol.kontrol import google_arama
+from vison.vison import llava_vision_analiz
+from kontrol.güvenlik import guvenlik_kontrolu
+from tools.google_tool import ghost_search_tool
+from tools.browser_tool import get_dom_elements
 from core.fs import (
     akilli_yol_cozucu, alternatif_yol_bul, derin_arama, kodu_calistir
 )
@@ -53,7 +56,8 @@ class CommandHandler:
             "klasor_incele": {"func": self._tool_inspect_folder, "yol_coz": True, "param_count": 1},
             "kodu_calistir": {"func": self._tool_run_code, "yol_coz": True, "param_count": 1},
             "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
-            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2} # 2 Parametreli tek araç
+            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2}, # 2 Parametreli tek araç
+            "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1}
         }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -313,6 +317,41 @@ class CommandHandler:
             return f"Arama Sonuçları:\n{arama_sonuclari}"
         return "İnternette sonuç bulunamadı."
     
+    def _tool_browser_observe(self, hedef: str) -> str:
+        hedef = hedef.lower().strip()
+        
+        # 1. DURUM: HEDEF BİR WEB SİTESİ İSE (DOM + Vision Fallback)
+        if hedef.startswith("http") or "www" in hedef or ".com" in hedef:
+            self.app.log(f"SİSTEM: '{hedef}' için DOM analizi başlatılıyor...", "green")
+            try:
+                if not hedef.startswith("http"):
+                    hedef = "https://" + hedef
+                    
+                dom_sonucu = get_dom_elements(hedef)
+                if "Hatası" not in dom_sonucu:
+                    return f"TARAYICI DOM GÖZLEMİ (Başarılı):\n{dom_sonucu}"
+            except Exception as e:
+                self.app.log(f"SİSTEM UYARISI: DOM çekilemedi ({e}), Görsel (Vision) Modele geçiliyor...", "yellow")
+                
+            soru = f"Şu an tarayıcıda '{hedef}' açık. Etkileşime girilebilecek (tıklanabilir veya yazı yazılabilir) temel öğeler nelerdir? Konumlarını 'sağ üst', 'merkez' gibi genel ifadelerle belirt."
+
+        # 2. DURUM: HEDEF MASAÜSTÜ/EKRAN İSE (Doğrudan Vision'a Geç)
+        else:
+            self.app.log("SİSTEM: Doğrudan masaüstü analizi için LLaVA Gözleri Açılıyor...", "green")
+            soru = "Şu an bilgisayarın masaüstü ekranına bakıyorsun. Ekranda hangi uygulamalar, açık pencereler veya tıklanabilir öğeler var? Konumlarını belirt."
+
+        # LLaVA Vision İşlemi (Hem masaüstü hem de çöken tarayıcı için ortak nokta)
+        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_temp_vision.png")
+        try:
+            ekran = PIL.ImageGrab.grab(all_screens=True)
+            ekran.save(kayit_yolu)
+            
+            _, _, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            return f"GÖRSEL GÖZLEM:\n{mesaj}"
+            
+        except Exception as e:
+            return f"Gözlem tamamen başarısız oldu: {str(e)}"
+        
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
