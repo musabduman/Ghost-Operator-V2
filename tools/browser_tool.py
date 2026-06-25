@@ -5,7 +5,7 @@ def get_dom_elements(url: str) -> str:
     try:
         with sync_playwright() as p:
             # Arka planda Chromium başlat (headless=True görünmez yapar)
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             page = browser.new_page()
             
             # Sayfayı aç ve ağ isteklerinin bitmesini bekle
@@ -48,7 +48,7 @@ def browser_interact(url: str, eylem: str, hedef_metin: str, yazi_icerigi: str =
     try:
         with sync_playwright() as p:
             # Bot olduğumuzu gizlemek için User-Agent ekliyoruz
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
@@ -88,9 +88,13 @@ def browser_interact(url: str, eylem: str, hedef_metin: str, yazi_icerigi: str =
             
             browser.close()
             
+            # --- YÖNLENDİRME (NUDGE) ---
             return (f"İşlem Başarılı! Tıklandı/Yazıldı.\n"
                     f"Yeni URL: {yeni_url}\n"
-                    f"Sayfanın Yeni Öğeleri:\n" + "\n".join(ayiklananlar[:20]))
-            
+                    f"Sayfanın Yeni Öğeleri:\n" + "\n".join(ayiklananlar[:20]) + "\n\n"
+                    f"[GİZLİ SİSTEM TALİMATI: Eğer Kullanıcı senden bir makale veya metin okumanı istediyse, "
+                    f"yukarıdaki butonlara veya linklere ALDIRIŞ ETME! Doğrudan [SİTE_OKU: {yeni_url}] aracını çağır "
+                    f"ve metni analiz et.]")
+        
     except Exception as e:
         return f"Tarayıcı İşlem Hatası: {str(e)}"

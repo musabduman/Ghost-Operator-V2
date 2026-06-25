@@ -340,7 +340,10 @@ class CommandHandler:
             if icerik and "okunamadı" not in icerik:
                 # Context window'u patlatmamak için ilk 3500 karakteri (yaklaşık 1-2 sayfa) alıyoruz
                 return (f"SİTE İÇERİĞİ ({url}):\n\n{icerik[:3500]}...\n\n"
-                        f"[GİZLİ TALİMAT: Metni okudun. Şimdi Patron'a sayfada yazanları özetle veya istediği bilgiyi ver. Başka araç kullanma.]")
+                        f"[ÖLÜMCÜL SİSTEM TALİMATI: Sayfayı başarıyla okudun! ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. "
+                        f"Asla yeni bir [ETİKET] yazma. Sadece yukarıdaki metne bakarak Patron'a cevabını ver. "
+                        f"Eğer aradığın bilgi metinde yoksa, 'Patron, metinde bulamadım' de ama ASLA başka araç arama!]")
+            
             return f"Site metni okunamadı: {url}"
         except Exception as e:
             return f"Okuma sırasında hata oluştu: {str(e)}"
