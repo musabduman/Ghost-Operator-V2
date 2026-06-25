@@ -29,6 +29,9 @@ PATTERNS = {
     # ── Tarayıcı ve Masaüstü Gözlem Aracı ─────────────────────────────────────
     "gozlem_yap": re.compile(r'\[\s*GOZLEM_YAP\s*:\s*(.*?)\s*\]', re.IGNORECASE),
     
+    # Format: [SİTE_OKU: url]
+    "site_oku": re.compile(r'\[\s*SİTE_OKU\s*:\s*(.*?)\s*\]', re.IGNORECASE),
+    
     # ── İSTİSNA: Çift Parametreli Araç (Dosya Yolu ve Kod Bloğu) ───────────────
     "dosya_yaz":     re.compile(
         r'\[\s*DOSYA_YAZ\s*:\s*(.*?)\s*\]\s*<<<KOD_BASLANGIC>>>\s*(.*?)\s*<<<KOD_BITIS>>>',

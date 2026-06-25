@@ -42,20 +42,46 @@ def search_duckduckgo(query):
             })
     return results
 
-def ghost_search_tool(query):
-    """Ghost'un ana arama aracı. Önce Google'ı dener, çökerse DDG'ye geçer."""
+def _format_results(results: list) -> str:
+    """Sonuç listesini modelin okuyabileceği temiz string'e çevirir."""
+    if not results:
+        return ""
+    satirlar = []
+    for i, r in enumerate(results, 1):
+        satirlar.append(
+            f"{i}. {r.get('title', 'Başlık yok')}\n"
+            f"   URL: {r.get('link', '-')}\n"
+            f"   Özet: {r.get('snippet', '-')}"
+        )
+    return "\n\n".join(satirlar)
+
+def ghost_search_tool(query) -> str:
+    """Ghost'un ana arama aracı. Önce Google'ı dener, çökerse DDG'ye geçer.
+    Her zaman string döndürür — boş sonuçta da açıklayıcı hata mesajı verir."""
     print(f"Ghost aranıyor: '{query}'...")
+    
+    # 1. Google dene
     try:
         results = search_google(query)
         print("Arama Google üzerinden başarıyla yapıldı.")
-        return results
+        formatted = _format_results(results)
+        if formatted:
+            return formatted
+        return "Google arama tamamlandı ancak sonuç bulunamadı."
     except Exception as e:
-        if str(e) == "QuotaExceeded":
-            print("Google kotası dolmuş! Ghost yedek sisteme (DuckDuckGo) geçiş yapıyor...")
-            return search_duckduckgo(query)
-        else:
-            print(f"Beklenmeyen bir hata oluştu: {e}. DuckDuckGo deneniyor...")
-            return search_duckduckgo(query)
+        kaynak = "Google kotası dolmuş" if str(e) == "QuotaExceeded" else f"Google hatası: {e}"
+        print(f"{kaynak}. DuckDuckGo deneniyor...")
+    
+    # 2. DuckDuckGo fallback
+    try:
+        results = search_duckduckgo(query)
+        formatted = _format_results(results)
+        if formatted:
+            return formatted
+        return "DuckDuckGo'da da sonuç bulunamadı."
+    except Exception as e:
+        print(f"DuckDuckGo da başarısız: {e}")
+        return f"Arama tamamen başarısız oldu. Google ve DuckDuckGo erişilemez durumda. Hata: {e}"
 
 def read_webpage(url):
     """Ghost'un bulduğu linkin içine girip içeriği okumasını sağlar."""

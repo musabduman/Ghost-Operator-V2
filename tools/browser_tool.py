@@ -54,7 +54,7 @@ def browser_interact(url: str, eylem: str, hedef_metin: str, yazi_icerigi: str =
             )
             page = context.new_page()
             
-            page.goto(url, wait_until="networkidle", timeout=15000)
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
             
             # 1. Playwright'ın Akıllı Seçicisi: Metne veya Placeholder'a göre elementi bul
             element = page.get_by_text(hedef_metin, exact=False).first
