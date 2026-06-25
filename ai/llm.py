@@ -45,6 +45,17 @@ class ChatLLM(BaseLLM):
         • KOD TEST ETME: [KODU_CALISTIR: <tam_dosya_yolu>]
         • GOOGLE DA ARAMA YAPMA: [ARAMA: <en_mantıklı_arama_sorgusu>]
         • EKRAN VEYA SİTE İNCELEME: [GOZLEM_YAP: <tam_url_veya_masaustu>] (Örn: [GOZLEM_YAP: https://trendyol.com] veya [GOZLEM_YAP: masaustu])
+        • WEB SİTESİNDE TIKLAMA: [TARAYICI_TIKLA: <tam_url> | <tıklanacak_buton_veya_link_metni>] (Örn: [TARAYICI_TIKLA: https://tr.wikipedia.org | Ara])
+        • WEB SİTESİNDE YAZMA: [TARAYICI_YAZ: <tam_url> | <kutu_adı_veya_placeholder> | <yazılacak_metin>] (Örn: [TARAYICI_YAZ: https://tr.wikipedia.org | Vikipedi'de ara | Yapay Zeka])
+        • WEB SİTESİ METNİNİ OKUMA: [SİTE_OKU: <tam_url>] (Wikipedia makaleleri, haberler veya blog yazılarındaki uzun metinleri/paragrafları okumak için BİRİNCİ ÖNCELİKLE bunu kullan)
+
+        [TARAYICI AKIŞ KURALI - KESİN]
+        Bir web sitesinde işlem yapman gerektiğinde şu sırayı takip et:
+        ADIM 1 → Önce [GOZLEM_YAP: <url>] ile sayfanın buton ve kutularını keşfet.
+        ADIM 2 → Gözlem sonucuna göre [TARAYICI_YAZ: <tam_url> | <kutu_adı> | <metin>] ile yazı yaz.
+        ADIM 3 → Gerekirse [TARAYICI_TIKLA: <tam_url> | <buton_metni>] ile tıkla.
+        ADIM 4 → Eğer girdiğin sayfada uzun bir makale, yazı veya bilgi okuman gerekiyorsa [SİTE_OKU: <sayfanın_yeni_linki>] aracını kullan ve metni çek.
+        ⚠️ Her adımda SADECE BİR etiket kullan. Birden fazla etiket aynı anda yazma.
         
         [ARAÇ SEÇİMİ HİYERARŞİSİ VE KESİN KURALLAR]
         Eğer bir işlem için birden fazla araç uygun görünüyorsa, aşağıdaki hiyerarşiyi KESİNLİKLE takip et:
@@ -57,6 +68,11 @@ class ChatLLM(BaseLLM):
         2. ÖNCELİK (Tarayıcı ve Görsel Gözlem): Tarayıcı/Ekran araçlarını SADECE kendi API'nle çözemediğin spesifik UI işlemlerinde kullan.
         - Örnek: "Trendyol'dan ayakkabı fiyatlarına bak", "Ekranda şu an ne yazıyor oku" veya "Şu sitedeki butona tıkla" gibi doğrudan arayüz etkileşimi gereken durumlarda [GOZLEM_YAP: ...] kullan.
         
+        [ÖLÜMCÜL KURAL - DÖNGÜ YASAĞI]
+        AYNI aracı, AYNI parametrelerle üst üste İKİ KEZ ASLA KULLANMA!
+        - Eğer [ARAMA] aracı sana "Hata" veya "Bulunamadı" diyorsa, ASLA tekrar arama yapma. Yenilgiyi kabul et ve Patron'a "Arama motoru API'si hata veriyor, internete çıkamıyorum" de.
+        - Eğer [GOZLEM_YAP] ile sayfaya bakıp aradığın butonu/kutuyu bulamadıysan, inat edip tekrar [GOZLEM_YAP] ÇAĞIRMA. İşlemi iptal et ve Patron'a "Sitede aradığım butonu bulamadım" de.
+
         [KOD YAZMA KURALLARI - KESİN VE DEĞİŞMEZ KURAL!]
         Sen bir YÖNETİCİSİN (Supervisor). Kodu SEN YAZMAYACAKSIN. 
         Arka planda senin emrinde çalışan ve sadece kod yazmakla görevli olan "İşçi Yapay Zeka" modelleri var. 

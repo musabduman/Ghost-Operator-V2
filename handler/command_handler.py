@@ -56,12 +56,14 @@ class CommandHandler:
             "klasor_incele": {"func": self._tool_inspect_folder, "yol_coz": True, "param_count": 1},
             "kodu_calistir": {"func": self._tool_run_code, "yol_coz": True, "param_count": 1},
             "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
-            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2}, # 2 Parametreli tek araç
+            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2},
             "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1},
+            # 2 parametreli browser araçları — PATTERNS'daki formatla eşleşiyor
             # Format: [TARAYICI_TIKLA: url | buton_adi]
-            "tarayici_tikla": re.compile(r'\[\s*TARAYICI_TIKLA\s*:\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
+            "tarayici_tikla": {"func": self._tool_browser_click, "yol_coz": False, "param_count": 2},
             # Format: [TARAYICI_YAZ: url | kutu_adi | yazilacak_metin]
-            "tarayici_yaz": re.compile(r'\[\s*TARAYICI_YAZ\s*:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]', re.IGNORECASE),
+            "tarayici_yaz": {"func": self._tool_browser_type, "yol_coz": False, "param_count": 3},
+            "site_oku": {"func": self._tool_read_website, "yol_coz": False, "param_count": 1},
         }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -158,14 +160,20 @@ class CommandHandler:
                     self.app.konus.speak(final_mesaji)
                 break
             
-            # KORUMA: Ghost aynı aracı tekrar çağırdıysa
-            if response in gecmis_arac_cagrilari:
+            # KORUMA: Ghost aynı araç imzasını tekrar çağırdıysa
+            # response'un tamamını değil, içindeki etiketleri karşılaştır.
+            # Model her seferinde biraz farklı metin üretebilir ama etiketler aynı kalır.
+            etiket_eslesmeler = re.findall(r'\[\s*[A-ZÇĞİÖŞÜ_]+\s*:.*?\]', response, re.IGNORECASE | re.DOTALL)
+            arac_imzasi = "|".join(sorted(etiket_eslesmeler))
+            
+            if arac_imzasi and arac_imzasi in gecmis_arac_cagrilari:
                 self.app.log("SİSTEM UYARISI: Ghost aynı aracı tekrar denedi, döngü kırılıyor.", "red")
                 final_mesaji = "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?"
                 self.app.record_message("ghost", final_mesaji)
-                break # <--- İŞTE SİLDİĞİN VE EKRANI SPAMLEYEN O EKSİK KOMUT
+                break
                 
-            gecmis_arac_cagrilari.add(response)
+            if arac_imzasi:
+                gecmis_arac_cagrilari.add(arac_imzasi)
             
             # Araç sonucunu "SYSTEM" olarak modele besle
             self.controller.supervisor.mesaj_gecmisi.append({
@@ -320,7 +328,23 @@ class CommandHandler:
         self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine tıklanıyor...", "green")
         from tools.browser_tool import browser_interact
         return browser_interact(url, "tikla", hedef_metin)
-
+    
+    # ── Sitedeki Metni/Makaleyi Okuma ──────────────────────────────────────────
+    def _tool_read_website(self, url: str) -> str:
+        self.app.log(f"SİSTEM: '{url}' içeriği (metin olarak) okunuyor...", "green")
+        from tools.google_tool import read_webpage
+        
+        try:
+            icerik = read_webpage(url)
+            # Metin başarıyla çekildiyse
+            if icerik and "okunamadı" not in icerik:
+                # Context window'u patlatmamak için ilk 3500 karakteri (yaklaşık 1-2 sayfa) alıyoruz
+                return (f"SİTE İÇERİĞİ ({url}):\n\n{icerik[:3500]}...\n\n"
+                        f"[GİZLİ TALİMAT: Metni okudun. Şimdi Patron'a sayfada yazanları özetle veya istediği bilgiyi ver. Başka araç kullanma.]")
+            return f"Site metni okunamadı: {url}"
+        except Exception as e:
+            return f"Okuma sırasında hata oluştu: {str(e)}"
+        
     # ── Web sitesinde yazma ──────────────────────────────────────────────
     def _tool_browser_type(self, url: str, hedef_metin: str, yazi_icerigi: str) -> str:
         self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine '{yazi_icerigi}' yazılıyor...", "green")
@@ -363,14 +387,27 @@ class CommandHandler:
         except Exception as e:
             return f"Gözlem tamamen başarısız oldu: {str(e)}"
 
-    # ── Google arama yapabilme ────────────────────────────────────────────────────
+# ── Google arama yapabilme ────────────────────────────────────────────────────
     def _tool_search(self, query: str) -> str:
         self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
-        arama_sonuclari = ghost_search_tool(query) 
-        if arama_sonuclari:
-            return f"Arama Sonuçları:\n{arama_sonuclari}"
-        return "İnternette sonuç bulunamadı."
-        
+        try:
+            # Artık google_tool.py doğrudan formatlanmış string dönüyor
+            arama_sonuclari = ghost_search_tool(query)
+            
+            # Eğer dönen string içinde hata veya bulamadığına dair kelimeler varsa LLM'i uyar (Nudge)
+            if "bulunamadı" in arama_sonuclari.lower() or "başarısız" in arama_sonuclari.lower():
+                return (f"{arama_sonuclari}\n\n"
+                        f"[GİZLİ SİSTEM TALİMATI: Aynı aramayı tekrar YAPMA. "
+                        f"Farklı anahtar kelimeler dene veya Kullanıcıya bulamadığını söyle.]")
+            
+            # Arama başarılıysa sonuçları doğrudan döndür
+            return f"'{query}' İçin Arama Sonuçları:\n\n{arama_sonuclari}"
+                
+        except Exception as e:
+            # Beklenmeyen bir crash durumunda LLM'i engelle
+            return (f"Arama motoru geçici olarak çöktü (Hata: {str(e)[:50]}). "
+                    f"[GİZLİ SİSTEM TALİMATI: Aramayı tekrar DENEME. Kullanıcıya sistemin hata verdiğini söyle.]")
+                    
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
