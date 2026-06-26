@@ -64,6 +64,7 @@ class CommandHandler:
             # Format: [TARAYICI_YAZ: url | kutu_adi | yazilacak_metin]
             "tarayici_yaz": {"func": self._tool_browser_type, "yol_coz": False, "param_count": 3},
             "site_oku": {"func": self._tool_read_website, "yol_coz": False, "param_count": 1},
+            "gorev_bitti": {"func": self._tool_mission_complete, "yol_coz": False, "param_count": 1},
         }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -151,7 +152,18 @@ class CommandHandler:
 
             # Araç var mı kontrol et
             sonuc = self._araclari_calistir(response)
-
+            
+            # --- GÖREV BİTTİ SİNYAL KONTROLÜ ---
+            if sonuc and "GÖREV_TAMAMLANDI_SİNYALİ:" in sonuc:
+                match = re.search(r'GÖREV_TAMAMLANDI_SİNYALİ:\s*(.*)', sonuc, re.DOTALL)
+                final_mesaji = match.group(1).strip() if match else "Görev tamamlandı."
+                final_mesaji = self._clean_response_for_display(final_mesaji)
+                
+                self.app.record_message("ghost", final_mesaji)
+                if self.app.voice_mode:
+                    self.app.konus.speak(final_mesaji)
+                break # Döngüyü kır ve çık!
+            
             if sonuc is None:
                 # ÇIKIŞ ŞARTI: Etiket yoksa işlem başarıyla bitmiştir.
                 final_mesaji = self._clean_response_for_display(response)
@@ -309,7 +321,7 @@ class CommandHandler:
         )
 
         # 2. Arka plan sistem etiketlerini tamamen yok et (örn: [OPEN_APP: chrome])
-        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ):.*?\]'
+        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|GÖREV_BİTTİ):.*?\]'
         result = re.sub(etiketler, '', result, flags=re.IGNORECASE)
         
         # 3. Planlayıcının ürettiği boş/sessiz hedefleri ([TASARIM], [KONTEKST_BELİR]) sil
@@ -389,8 +401,13 @@ class CommandHandler:
             
         except Exception as e:
             return f"Gözlem tamamen başarısız oldu: {str(e)}"
+        
+    # ── Görev tamam mı ────────────────────────────────────────────────────
+    def _tool_mission_complete(self, nihai_cevap: str) -> str:
+        """Ghost görevi bitirdiğinde bu sinyali agentic loop'a fırlatır."""
+        return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
 
-# ── Google arama yapabilme ────────────────────────────────────────────────────
+    # ── Google arama yapabilme ────────────────────────────────────────────────────
     def _tool_search(self, query: str) -> str:
         self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
         try:
