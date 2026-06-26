@@ -443,6 +443,41 @@ class CommandHandler:
                 # 3. PLAN C: Görsel Arama Fallback (LLaVA)
                 self.app.log("SİSTEM HATA: Tarayıcı DOM'u çöktü. Plan C (LLaVA Görsel) başlıyor...", "yellow")
                 return self._visual_search_fallback(query)
+   
+    # ── Google da arama yapma konusunda hata alırsak  ───────────────────
+    def _visual_search_fallback(self, query: str) -> str:
+        """API'ler çöktüğünde fiziksel olarak Chrome açıp LLaVA ile okuma yapar."""
+        import urllib.parse
+        from playwright.sync_api import sync_playwright
+        
+        safe_query = urllib.parse.quote(query)
+        url = f"https://www.google.com/search?q={safe_query}"
+        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_temp_search.png")
+        
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=False)
+                page = browser.new_page()
+                page.goto(url, wait_until="networkidle", timeout=15000)
+                page.wait_for_timeout(2000)
+                
+                try:
+                    page.get_by_text("Tümünü reddet", exact=False).first.click(timeout=2000)
+                except:
+                    pass
+                    
+                page.screenshot(path=kayit_yolu)
+                browser.close()
+            
+            self.app.log("SİSTEM: Ekran görüntüsü alındı, LLaVA analiz ediyor...", "green")
+            
+            soru = f"Bu bir Google arama sonuç sayfası. Kullanıcının '{query}' araması için ekranda (özellikle üstte ve ortadaki büyük panellerde, maç skorlarında veya bilgi kutularında) yazan net cevabı bul ve bana sadece o cevabı söyle."
+            
+            _, _, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            return f"API'ler çöktü ama Tarayıcı+Görsel Zeka ile şu sonucu buldum:\n{mesaj}"
+            
+        except Exception as e:
+            return f"Maalesef Görsel Arama B Planı da başarısız oldu: {str(e)}\nLütfen Kullanıcıya internet bağlantısı sorunu olduğunu söyle."
                             
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
