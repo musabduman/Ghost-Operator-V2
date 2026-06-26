@@ -98,3 +98,61 @@ def browser_interact(url: str, eylem: str, hedef_metin: str, yazi_icerigi: str =
         
     except Exception as e:
         return f"Tarayıcı İşlem Hatası: {str(e)}"
+    
+def browser_google_search(query: str) -> str:
+    """Google API kullanmadan, Playwright ile fiziksel olarak Chrome açıp arama yapar ve linkleri çeker."""
+    from playwright.sync_api import sync_playwright
+    import urllib.parse
+    
+    # URL formatına uygun hale getir
+    safe_query = urllib.parse.quote(query)
+    url = f"https://www.google.com/search?q={safe_query}"
+    
+    try:
+        with sync_playwright() as p:
+            # Bot olduğumuzu gizlemek için user-agent ekleyelim
+            browser = p.chromium.launch(headless=False) 
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+            
+            # Google'a git ve DOM'un yüklenmesini bekle
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            
+            # (İsteğe bağlı) Google "Çerezleri Kabul Et" pop-up'ı çıkarsa kapat
+            try:
+                page.get_by_text("Tümünü reddet", exact=False).first.click(timeout=2000)
+            except:
+                pass
+                
+            # Arama sonuçlarını (Başlık ve Linkler) topla
+            results = []
+            # Google genellikle sonuçları h3 etiketine sahip a (link) etiketleri içinde tutar
+            links = page.locator("a:has(h3)").all()
+            
+            for link in links[:5]: # İlk 5 sonucu al
+                title = link.locator("h3").inner_text()
+                href = link.get_attribute("href")
+                
+                if title and href and href.startswith("http"):
+                    results.append(f"- {title}\n  URL: {href}")
+                    
+            browser.close()
+            
+            if not results:
+                return f"'{query}' arandı ama sonuç linkleri çekilemedi. Belki de bir bilgi paneli çıktı."
+                
+            return f"TARAYICI ARAMA SONUÇLARI ('{query}'):\n\n" + "\n\n".join(results)
+            
+    except Exception as e:
+        return f"Tarayıcı ile arama başarısız oldu: {str(e)}"
+    
+
+
+
+
+
+
+
+    
