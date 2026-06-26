@@ -37,7 +37,8 @@ def screenshot_çek(self, kayit_yolu, soru):
             else:
                 # Kod yok, LLaVA'nın yorumunu direkt göster
                 self.after(0, lambda: self.record_message("ghost", mesaj))
-                threading.Thread(target=vision_istegi, daemon=True).start()
+        
+        threading.Thread(target=vision_istegi, daemon=True).start()
 
     except Exception as e:
         self.deiconify()

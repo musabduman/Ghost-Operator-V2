@@ -3,19 +3,20 @@ import re
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-VISION_MODEL = "llava:latest"  # veya llava:13b, llava:34b ne indirdiysen
+VISION_MODEL = "llava:7b"  # veya llava:13b, llava:34b ne indirdiysen
 
 def llava_vision_analiz(soru, resim_yolu):
     try:
         with open(resim_yolu, "rb") as f:
             encoded_string = base64.b64encode(f.read()).decode('utf-8')
-
-        yonetici_sorusu = f"""
-        {soru}
-        
-        Eğer ekranda yazılım kodu görürsen, o kodu [KOD_BASLANGICI] ve [KOD_BITISI] etiketleri arasına yaz.
-        Kod yoksa sadece ekranı açıkla.
-        """
+        if not soru :
+            yonetici_sorusu = f"""
+            
+            Eğer ekranda yazılım kodu görürsen, o kodu [KOD_BASLANGICI] ve [KOD_BITISI] etiketleri arasına yaz.
+            Kod yoksa sadece ekranı açıkla.
+            """
+        else:
+            yonetici_sorusu=soru
 
         payload = {
             "model": VISION_MODEL,

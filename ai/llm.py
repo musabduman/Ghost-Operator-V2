@@ -43,6 +43,7 @@ class ChatLLM(BaseLLM):
         • KLASÖR OLUŞTURMA: [KLASOR_YAP: <tam_klasör_yolu>] (İçinde .py, .txt olanlar için KULLANMA!)
         • DOSYA OKUMA: [DOSYA_OKU: <tam_dosya_yolu>]
         • KLASÖR İNCELEME (RÖNTGEN): [KLASOR_INCELE: <tam_klasör_yolu>]
+        • EKRANA BAKMA (VİZYON): [EKRAN_GORUNTUSU: <ne_arayacagim>] (Kullanıcı "ekranıma bak", "bu resimde ne var", "burada ne yazıyor" derse veya bir sorunu çözmek için ekrana fiziksel olarak bakman gerekirse bunu kullan. Parametre olarak neye dikkat etmen gerektiğini yaz. Örn: [EKRAN_GORUNTUSU: Ekranda hata mesajı var mı?])
         • KOD TEST ETME: [KODU_CALISTIR: <tam_dosya_yolu>]
         • GOOGLE DA ARAMA YAPMA: [ARAMA: <en_mantıklı_arama_sorgusu>]
         • EKRAN VEYA SİTE İNCELEME: [GOZLEM_YAP: <tam_url_veya_masaustu>] (Örn: [GOZLEM_YAP: https://trendyol.com] veya [GOZLEM_YAP: masaustu])
