@@ -37,4 +37,7 @@ PATTERNS = {
         r'\[\s*DOSYA_YAZ\s*:\s*(.*?)\s*\]\s*<<<KOD_BASLANGIC>>>\s*(.*?)\s*<<<KOD_BITIS>>>',
         re.DOTALL | re.IGNORECASE
     ),
+    #Görevler bitince loopdan çıkabilmek için.
+    "gorev_bitti": re.compile(r'\[GOREV_BITTI:\s*(.*?)\]', flags=re.IGNORECASE | re.DOTALL),
+
 }
