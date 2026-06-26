@@ -65,6 +65,7 @@ class CommandHandler:
             "tarayici_yaz": {"func": self._tool_browser_type, "yol_coz": False, "param_count": 3},
             "site_oku": {"func": self._tool_read_website, "yol_coz": False, "param_count": 1},
             "gorev_bitti": {"func": self._tool_mission_complete, "yol_coz": False, "param_count": 1},
+            "ekran_goruntusu": {"func": self._tool_take_screenshot, "yol_coz": False, "param_count": 1},
         }
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -321,7 +322,7 @@ class CommandHandler:
         )
 
         # 2. Arka plan sistem etiketlerini tamamen yok et (örn: [OPEN_APP: chrome])
-        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|GÖREV_BİTTİ):.*?\]'
+        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|GOREV_BITTI|TARAYICI_TIKLA|TARAYICI_YAZ|GOZLEM_YAP|SİTE_OKU|EKRAN_GORUNTUSU):.*?\]'        
         result = re.sub(etiketler, '', result, flags=re.IGNORECASE)
         
         # 3. Planlayıcının ürettiği boş/sessiz hedefleri ([TASARIM], [KONTEKST_BELİR]) sil
@@ -406,7 +407,38 @@ class CommandHandler:
     def _tool_mission_complete(self, nihai_cevap: str) -> str:
         """Ghost görevi bitirdiğinde bu sinyali agentic loop'a fırlatır."""
         return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
-
+    
+    # ── Otonom Ekran Görüntüsü (Ghost'un Gözleri) ─────────────────────────
+    def _tool_take_screenshot(self, soru: str) -> str:
+        self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{soru}'", "green")
+        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_auto_screenshot.png")
+        
+        try:
+            # 1. UI'ı gizle (Ghost kendi penceresini çekmesin)
+            self.app.iconify()
+            time.sleep(0.5) 
+            
+            # 2. Ekran resmini al
+            import PIL.ImageGrab
+            ekran = PIL.ImageGrab.grab(all_screens=True)
+            ekran.save(kayit_yolu)
+            
+            # 3. UI'ı geri getir
+            self.app.deiconify()
+            
+            # 4. LLaVA'ya gönder ve analiz ettir
+            from vison.vison import llava_vision_analiz
+            basarili_mi, saf_kod, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            
+            if basarili_mi and saf_kod:
+                return f"GÖZLEM SONUCU: Ekranda şu kod bulundu:\n\n{saf_kod}\n\nLütfen Kullanıcının asıl isteğine göre bu kodu kullanarak işlem yap."
+            
+            return f"GÖZLEM SONUCU: {mesaj}"
+            
+        except Exception as e:
+            self.app.deiconify()
+            return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
+        
     # ── 3 Aşamalı Otonom Arama (DDG -> Playwright -> LLaVA) ───────────────────
     def _tool_search(self, query: str) -> str:
         self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{query}'...", "green")

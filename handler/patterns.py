@@ -39,5 +39,7 @@ PATTERNS = {
     ),
     #Görevler bitince loopdan çıkabilmek için.
     "gorev_bitti": re.compile(r'\[GOREV_BITTI:\s*(.*?)\]', flags=re.IGNORECASE | re.DOTALL),
-
+    
+    "ekran_goruntusu": re.compile(r'\[EKRAN_GORUNTUSU:\s*(.*?)\]', flags=re.IGNORECASE | re.DOTALL),
+    
 }
