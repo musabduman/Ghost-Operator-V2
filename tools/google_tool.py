@@ -5,12 +5,12 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
+"""
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
 def search_google(query):
-    """Google API ile arama yapar."""
+    Google API ile arama yapar.
     url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={SEARCH_ENGINE_ID}&q={query}"
     response = requests.get(url)
     
@@ -28,7 +28,7 @@ def search_google(query):
             "snippet": item.get("snippet")
         })
     return results
-
+"""
 def search_duckduckgo(query):
     """Fallback (B Planı) olarak DuckDuckGo ile arama yapar."""
     results = []
@@ -59,7 +59,7 @@ def ghost_search_tool(query) -> str:
     """Ghost'un ana arama aracı. Önce Google'ı dener, çökerse DDG'ye geçer.
     Her zaman string döndürür — boş sonuçta da açıklayıcı hata mesajı verir."""
     print(f"Ghost aranıyor: '{query}'...")
-    
+    """
     # 1. Google dene
     try:
         results = search_google(query)
@@ -71,7 +71,7 @@ def ghost_search_tool(query) -> str:
     except Exception as e:
         kaynak = "Google kotası dolmuş" if str(e) == "QuotaExceeded" else f"Google hatası: {e}"
         print(f"{kaynak}. DuckDuckGo deneniyor...")
-    
+    """
     # 2. DuckDuckGo fallback
     try:
         results = search_duckduckgo(query)

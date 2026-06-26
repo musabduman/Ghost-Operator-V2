@@ -407,27 +407,43 @@ class CommandHandler:
         """Ghost görevi bitirdiğinde bu sinyali agentic loop'a fırlatır."""
         return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
 
-    # ── Google arama yapabilme ────────────────────────────────────────────────────
+    # ── 3 Aşamalı Otonom Arama (DDG -> Playwright -> LLaVA) ───────────────────
     def _tool_search(self, query: str) -> str:
-        self.app.log(f"SİSTEM: Google'da '{query}' aranıyor...", "green")
+        self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{query}'...", "green")
+        from tools.google_tool import search_duckduckgo, _format_results
+        
         try:
-            # Artık google_tool.py doğrudan formatlanmış string dönüyor
-            arama_sonuclari = ghost_search_tool(query)
+            # 1. PLAN A: DuckDuckGo Kütüphanesi (Hızlı ve Ücretsiz)
+            ddg_results = search_duckduckgo(query)
+            formatted = _format_results(ddg_results)
             
-            # Eğer dönen string içinde hata veya bulamadığına dair kelimeler varsa LLM'i uyar (Nudge)
-            if "bulunamadı" in arama_sonuclari.lower() or "başarısız" in arama_sonuclari.lower():
-                return (f"{arama_sonuclari}\n\n"
-                        f"[GİZLİ SİSTEM TALİMATI: Aynı aramayı tekrar YAPMA. "
-                        f"Farklı anahtar kelimeler dene veya Kullanıcıya bulamadığını söyle.]")
-            
-            # Arama başarılıysa sonuçları doğrudan döndür
-            return f"'{query}' İçin Arama Sonuçları:\n\n{arama_sonuclari}"
+            if formatted:
+                return (f"DuckDuckGo Arama Sonuçları ('{query}'):\n\n{formatted}\n\n"
+                        f"[GİZLİ SİSTEM TALİMATI: Aradığın bilgi için uygun bir kaynak bulduysan, "
+                        f"hiç vakit kaybetmeden [SİTE_OKU: <url>] aracını kullan ve sitenin içine gir.]")
+            else:
+                raise Exception("DuckDuckGo sonuç döndürmedi.")
                 
         except Exception as e:
-            # Beklenmeyen bir crash durumunda LLM'i engelle
-            return (f"Arama motoru geçici olarak çöktü (Hata: {str(e)[:50]}). "
-                    f"[GİZLİ SİSTEM TALİMATI: Aramayı tekrar DENEME. Kullanıcıya sistemin hata verdiğini söyle.]")
-                    
+            self.app.log(f"SİSTEM UYARISI: DDG başarısız ({str(e)[:30]}). Plan B (Fiziksel Tarayıcı) başlıyor...", "yellow")
+            
+            # 2. PLAN B: Fiziksel Tarayıcı (Playwright)
+            from tools.browser_tool import browser_google_search
+            try:
+                arama_sonuclari = browser_google_search(query)
+                if "başarısız oldu" in arama_sonuclari or "çekilemedi" in arama_sonuclari:
+                    raise Exception("Tarayıcı metin çekemedi.")
+                
+                self.app.log("SİSTEM: Plan B başarılı. Tarayıcı sonuçları alındı.", "green")
+                return (f"{arama_sonuclari}\n\n"
+                        f"[GİZLİ SİSTEM TALİMATI: Aradığın bilgi için uygun bir kaynak bulduysan, "
+                        f"[SİTE_OKU: <url>] aracını kullan.]")
+            
+            except Exception as e2:
+                # 3. PLAN C: Görsel Arama Fallback (LLaVA)
+                self.app.log("SİSTEM HATA: Tarayıcı DOM'u çöktü. Plan C (LLaVA Görsel) başlıyor...", "yellow")
+                return self._visual_search_fallback(query)
+                            
     # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
