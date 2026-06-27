@@ -3,7 +3,7 @@ import re
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-VISION_MODEL = "kimi-k2.5:cloud"  # veya llava:13b, llava:34b ne indirdiysen
+VISION_MODEL = "minimax-m3:cloud"  # veya llava:13b, llava:34b ne indirdiysen
 
 def llava_vision_analiz(soru, resim_yolu):
     try:
@@ -33,6 +33,16 @@ def llava_vision_analiz(soru, resim_yolu):
         }
 
         response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        # 1. HTTP seviyesindeki hataları yakala
+        if response.status_code != 200:
+            return False, None, f"API Bağlantı Hatası (HTTP {response.status_code}): {response.text}"
+            
+        json_yanit = response.json()
+        
+        # 2. JSON içerisindeki Ollama/API hatalarını yakala
+        if "error" in json_yanit:
+            return False, None, f"Model Hatası: {json_yanit['error']}"
+        
         cevap = response.json()["message"]["content"]
 
         kod_eslesme = re.search(r'\[KOD_BASLANGICI\](.*?)\[KOD_BITISI\]', cevap, re.DOTALL)
