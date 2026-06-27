@@ -19,7 +19,7 @@ from core.planner import PlannerAgent
 from kontrol.spotify import SpotifyManager
 from ai.llm import GhostController, ChatLLM
 from kontrol.kontrol import google_arama
-from vison.vison import llava_vision_analiz
+from vison.vison import minimax_vision_analiz
 from kontrol.güvenlik import guvenlik_kontrolu
 from tools.google_tool import ghost_search_tool
 from tools.browser_tool import get_dom_elements
@@ -397,7 +397,7 @@ class CommandHandler:
             ekran = PIL.ImageGrab.grab(all_screens=True)
             ekran.save(kayit_yolu)
             
-            _, _, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            _, _, mesaj = minimax_vision_analiz(soru, kayit_yolu)
             return f"GÖRSEL GÖZLEM:\n{mesaj}"
             
         except Exception as e:
@@ -426,14 +426,18 @@ class CommandHandler:
             # 3. UI'ı geri getir
             self.app.deiconify()
             
-            # 4. LLaVA'ya gönder ve analiz ettir
-            from vison.vison import llava_vision_analiz
-            basarili_mi, saf_kod, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            # 4. Arayüzde modeli "Vision" olarak göster
+            self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
+
+            # 4
+            # 5. LLaVA'ya gönder ve analiz ettir
+            from vison.vison import minimax_vision_analiz
+            basarili_mi, saf_kod, mesaj = minimax_vision_analiz(soru, kayit_yolu)
             
             if basarili_mi and saf_kod:
                 return f"GÖZLEM SONUCU: Ekranda şu kod bulundu:\n\n{saf_kod}\n\nLütfen Kullanıcının asıl isteğine göre bu kodu kullanarak işlem yap."
             
-            return f"GÖZLEM SONUCU: {mesaj}"
+            return f"GÖZLEM SONUCU: {mesaj}\n\n[ÖLÜMCÜL SİSTEM TALİMATI: Ekranı başarıyla gördün ve özetledin. ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. Hiçbir [ETİKET] kullanmadan, doğrudan gördüklerini Patron'a kendi havalı tarzınla açıkla ve görevi bitir.]"
             
         except Exception as e:
             self.app.deiconify()
@@ -505,7 +509,7 @@ class CommandHandler:
             
             soru = f"Bu bir Google arama sonuç sayfası. Kullanıcının '{query}' araması için ekranda (özellikle üstte ve ortadaki büyük panellerde, maç skorlarında veya bilgi kutularında) yazan net cevabı bul ve bana sadece o cevabı söyle."
             
-            _, _, mesaj = llava_vision_analiz(soru, kayit_yolu)
+            _, _, mesaj = minimax_vision_analiz(soru, kayit_yolu)
             return f"API'ler çöktü ama Tarayıcı+Görsel Zeka ile şu sonucu buldum:\n{mesaj}"
             
         except Exception as e:

@@ -5,7 +5,7 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/chat"
 VISION_MODEL = "minimax-m3:cloud"  # veya llava:13b, llava:34b ne indirdiysen
 
-def llava_vision_analiz(soru, resim_yolu):
+def minimax_vision_analiz(soru, resim_yolu):
     try:
         with open(resim_yolu, "rb") as f:
             encoded_string = base64.b64encode(f.read()).decode('utf-8')
