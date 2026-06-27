@@ -3,7 +3,7 @@ import re
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-VISION_MODEL = "llava:7b"  # veya llava:13b, llava:34b ne indirdiysen
+VISION_MODEL = "kimi-k2.5:cloud"  # veya llava:13b, llava:34b ne indirdiysen
 
 def llava_vision_analiz(soru, resim_yolu):
     try:
@@ -28,7 +28,8 @@ def llava_vision_analiz(soru, resim_yolu):
                 }
             ],
             "stream": False,
-            "options": {"temperature": 0.2}
+            "options": {"temperature": 0.2},
+            "keep_alive": 0
         }
 
         response = requests.post(OLLAMA_URL, json=payload, timeout=120)
