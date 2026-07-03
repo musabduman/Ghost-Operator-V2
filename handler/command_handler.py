@@ -18,17 +18,18 @@ from hafıza.rag_hafıza import Bellek
 from core.planner import PlannerAgent
 from kontrol.spotify import SpotifyManager
 from ai.llm import GhostController, ChatLLM
-from kontrol.kontrol import google_arama
+from ui.compact_ui import set_voice_state
 from vison.vison import minimax_vision_analiz
-from kontrol.güvenlik import guvenlik_kontrolu
-from tools.google_tool import ghost_search_tool
 from tools.browser_tool import get_dom_elements
 from core.fs import (
     akilli_yol_cozucu, alternatif_yol_bul, derin_arama, kodu_calistir
 )
  
 KAPANIŞ_KELİMELERİ = ["uyku modu", "teşekkürler ghost", "kapan", "çıkış yap", "görüşürüz"]
- 
+
+SESLI_MOD_GECIS = ["sesli moda geç", "orb moduna geç", "arayüzü küçült", "küçük ekrana geç", "kompakt mod"]
+YAZILI_MOD_GECIS = ["yazılı moda geç", "terminali aç", "arayüzü genişlet", "geniş ekrana geç", "sohbet moduna geç"]
+
 MAX_DEPTH = 2
  
 class CommandHandler:
@@ -80,43 +81,103 @@ class CommandHandler:
         if not user_input:
             return
  
+        # 1. Kapanış Kontrolü
         if any(k in user_input.lower() for k in KAPANIŞ_KELİMELERİ):
             self.app.record_message(f"\nSen: {user_input}")
             self.app.record_message("Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.", "green")
             self.app.after(2000, self.app.destroy)
             return
- 
+
+        # ----------------------------------------------------------------------
+        # ---> YENİ EKLENEN: ARAYÜZ GEÇİŞ KONTROLÜ (HIZLI MÜDAHALE)
+        lower_input = user_input.lower()
+        gecis_yapildi = False
+        
+        if any(k in lower_input for k in SESLI_MOD_GECIS):
+            self.app.compact_mode()
+            gecis_mesaji = "Sesli arayüze geçiyorum Patron."
+            gecis_yapildi = True
+
+        elif any(k in lower_input for k in YAZILI_MOD_GECIS):
+            self.app.expand_mode()
+            gecis_mesaji = "Terminal arayüzüne geçiyorum Patron."
+            gecis_yapildi = True
+
+        if gecis_yapildi:
+            # Geçiş yapıldığını kaydet ve (eğer sesli moddaysa) söyle
+            self.app.record_message("ghost", gecis_mesaji)
+            self.app.entry.delete(0, "end")
+            
+            if self.app.voice_mode:
+                # Mod değişirken Orb'un konuşma tepkisi vermesini sağla
+                from ui.compact_ui import set_voice_state
+                if not self.app._expanded:
+                    set_voice_state(self.app, "speaking", "Geçiş Yapılıyor...")
+                
+                self.app.konus.speak(gecis_mesaji)
+                
+                if not self.app._expanded:
+                    set_voice_state(self.app, "listening", "Dinliyorum...")
+            
+            # Eğer kullanıcı SADECE "Yazılı moda geç" dediyse (kelime sayısı azsa) LLM'i yormadan durdur.
+            # Ama "Terminali aç ve bana Beşiktaş'ın durumunu araştır" dediyse LLM işlemine devam etsin.
+            kelime_sayisi = len(user_input.split())
+            if kelime_sayisi <= 4: 
+                return
+             
         self.app.record_message("user", user_input)
         self.app.entry.delete(0, "end")
         #self.app.record_message("Ghost", "Düşünüyor...")
         self.app.set_model_label("Aktif Durum: Yönlendiriliyor...")
- 
+        
+        # ---> ORB: DÜŞÜNME MODUNA GEÇ <---
+        if not self.app._expanded:
+            set_voice_state(self.app, "thinking", "Düşünüyorum...")
+
         threading.Thread(
             target=self._orchestrate_task,
             args=(user_input,),
             daemon=True
         ).start()
     
+# 4. _orchestrate_task içindeki sohbet kısmına durumları ekle:
     def _orchestrate_task(self, user_input):
-        # Sadece açık sohbet kalıplarını filtrele
-        sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin"]
+
+        if self.app._expanded:
+            # Geniş (Yazılı) ekran formatı
+            sistem_notu = "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n"
+        else:
+            # Kompakt (Sesli) ekran formatı
+            sistem_notu = "[SİSTEM BİLGİSİ: Şu an KOMPAKT/SESLİ arayüzdesin. Cevaplarını çok KISA, NET ve bir sesli asistanın konuşacağı doğallıkta (maksimum 1-2 cümle) ver. Uzun listeler veya kod blokları KULLANMA.]\n"
+            
+        # Modeli besleyeceğimiz zenginleştirilmiş girdi
+        zengin_input = f"{sistem_notu}Kullanıcı Komutu: {user_input}"
+
+        sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin","nasıl gidiyor"]
         
         if any(k in user_input.lower() for k in sohbet_kaliplari):
             self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
             try:
-                response, model = self.controller(user_input)
+                response, model = self.controller(zengin_input)
                 self._update_model_label(model)
                 display = self._clean_response_for_display(response)
                 if display and display.strip():
                     self.app.record_message("ghost", display)
+                    # ---> ORB: EĞER SESLİ MODDAYSAK KONUŞ VE DİNLEMEYE DÖN <---
+                    if self.app.voice_mode:
+                        if not self.app._expanded:
+                            set_voice_state(self.app, "speaking", "Konuşuyorum...")
+                        self.app.konus.speak(display)
+                        if not self.app._expanded:
+                            set_voice_state(self.app, "listening", "Dinliyorum...")
+                            
             except Exception as e:
                 self.app.log(f"SİSTEM HATA: {e}", "red")
             return
 
-        # Geri kalan her şey agentic loop
         self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
         self._agentic_loop(user_input)
-        
+
     def run_startup(self):
         """Uyanış cümlesi + ilk dinleme döngüsünü başlatır."""
         prompt = (
@@ -129,7 +190,16 @@ class CommandHandler:
             cevap, model = self.controller(prompt)
             self._update_model_label(model)
             self.app.record_message("ghost" ,cevap)
+            # ---> ORB: KONUŞMA MODUNA GEÇ <---
+            if not self.app._expanded:
+                set_voice_state(self.app, "speaking", "Sistem Aktif...")
+
             self.app.konus.speak(cevap)
+            
+            # ---> ORB: KONUŞMA MODUNA GEÇ <---
+            if not self.app._expanded:
+                set_voice_state(self.app, "listening", "Dinliyorum...")
+            
             self.app.after(0, self.app.voice_handler.start_listening)
  
         except Exception as e:
@@ -162,7 +232,12 @@ class CommandHandler:
                 
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
+                    if not self.app._expandad:
+                        set_voice_state(self.app,"speaking","Konuşuyorum...")
+
                     self.app.konus.speak(final_mesaji)
+                    if not self.app._expandad:
+                        set_voice_state(self.app, "listening", "Dinliyorum...")
                 break # Döngüyü kır ve çık!
             
             if sonuc is None:
@@ -170,7 +245,11 @@ class CommandHandler:
                 final_mesaji = self._clean_response_for_display(response)
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
+                    if not self.app._expanded:
+                        set_voice_state(self.app, "speaking", "Konuşuyorum...")
                     self.app.konus.speak(final_mesaji)
+                    if not self.app._expanded:
+                        set_voice_state(self.app, "listening", "Dinliyorum...")
                 break
             
             # KORUMA: Ghost aynı araç imzasını tekrar çağırdıysa
