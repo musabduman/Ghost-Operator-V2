@@ -16,7 +16,7 @@ from kontrol.spotify import SpotifyManager
 from uyandırma.signal_watcher import SignalWatcher
 from vison.screenshot import screenshot_al_ve_yorumla
 
-from ui.compact_ui import build_compact
+from ui.compact_ui import build_voice
 from ui.expanded_ui import build_expanded, append_chat_bubble
 from sessions.session_manager import (
     new_session_id, save_session, load_session, list_sessions
@@ -81,10 +81,14 @@ class GhostOperatorUI(ctk.CTk):
         self._clear_main_frame()
         self.geometry(COMPACT_SIZE)
         self.attributes("-topmost", True)
-        self.main_frame = build_compact(self)
+        
+        # Artık compact modda Ses (Orb) Arayüzünü yüklüyoruz
+        self.main_frame = build_voice(self) 
         self.main_frame.pack(fill="both", expand=True)
         self._expanded = False
+        
         # Mevcut oturum mesajlarını log'a geri yaz
+        # (Ses modunda log_text olmadığı için log() içindeki winfo_exists() koruması sayesinde sessizce geçilir)
         for m in self._messages:
             prefix = "[Sen]" if m["role"] == "user" else "[Ghost]"
             self.log(f"{prefix}: {m['text']}")

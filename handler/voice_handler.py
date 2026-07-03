@@ -5,8 +5,10 @@ Cümle bitince otomatik durur, süre sınırı yok.
 import threading
 import queue
 import json
+import numpy as np
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
+from ui.compact_ui import set_voice_level
 
 MODEL_YOLU = "model"  # wake-word'deki ile aynı klasör
 
@@ -63,6 +65,22 @@ class VoiceHandler:
                 while True:
                     data = q.get()
 
+                    # ---> YENİ EKLENEN: ORB TİTREŞİM (SES SEVİYESİ) KONTROLÜ <---
+                    # Yalnızca Compact (Sesli) moddaysak çalışsın
+                    if not getattr(self.app, "_expanded", True):
+                        audio_np = np.frombuffer(data, dtype=np.int16)
+                        if len(audio_np) > 0:
+                            # 1. Sesin karesel ortalamasını al (RMS)
+                            rms = np.sqrt(np.mean(np.square(audio_np.astype(np.float32))))
+                            
+                            # 2. RMS'i 0.0 - 1.0 arasına sıkıştır. 
+                            # (16-bit PCM sınırı 32768'dir. 5.0 çarpanı hassasiyeti belirler, istersen artırıp azaltabilirsin)
+                            rms_normalized = min(1.0, (rms / 32768.0) * 5.0)
+                            
+                            # 3. Orb'a gönder
+                            set_voice_level(self.app, rms_normalized)
+                    # -------------------------------------------------------------
+
                     if rec.AcceptWaveform(data):
                         # Final sonuç — cümle bitti
                         result = json.loads(rec.Result())
@@ -79,6 +97,11 @@ class VoiceHandler:
                                 self.app.entry.delete(0, "end"),
                                 self.app.entry.insert(0, t)
                             ))
+
+            # ---> DÖNGÜ BİTTİ (CÜMLE KURULDU) <---
+            # Ses kesildiği için Orb'un seviyesini sıfırla
+            if not getattr(self.app, "_expanded", True):
+                set_voice_level(self.app, 0.0)
 
             if text:
                 self.app.log(f"Sen (Sesli): {text}")
