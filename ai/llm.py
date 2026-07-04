@@ -2,6 +2,48 @@ import re
 import os   
 import requests
 import platform
+import operator
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, END
+
+# 1. ORTAK BİLİNÇ (State)
+# ChatLLM'deki manuel 'mesaj_gecmisi' listesinin yerini alır
+class GhostState(TypedDict):
+    messages: Annotated[list, operator.add]
+    son_istenen_dosya: str
+    son_talimat: str
+
+# 2. DÜĞÜMLER (Nodes)
+def supervisor_node(state: GhostState):
+    # ChatLLM (_raw_call) burada çalışır
+    # Eğer model [KOD_ISTE: dosya | talimat] üretirse, bu bilgileri state'e kaydeder
+    pass
+
+def coder_node(state: GhostState):
+    # QwenWorker burada çalışır
+    # state["son_talimat"] ve state["son_istenen_dosya"] verilerini alıp kod üretir
+    pass
+
+# 3. KARAR MEKANİZMASI (Conditional Edge)
+def yonlendirici(state: GhostState):
+    son_mesaj = state["messages"][-1]
+    if "[KOD_ISTE" in son_mesaj:
+        return "coder" # Qwen'e yolla
+    elif "[GOREV_BITTI" in son_mesaj:
+        return END # Döngüyü bitir, Patron'a cevap ver
+    else:
+        return "tools" # command_handler'a yolla
+
+# GRAPH İNŞASI
+workflow = StateGraph(GhostState)
+workflow.add_node("supervisor", supervisor_node)
+workflow.add_node("coder", coder_node)
+
+workflow.set_entry_point("supervisor")
+workflow.add_conditional_edges("supervisor", yonlendirici)
+workflow.add_edge("coder", "supervisor") # Mühendis kodu yazınca tekrar Yöneticiye döner
+
+ghost_brain = workflow.compile()
 
 class BaseLLM:
     def generate(self, prompt):
@@ -104,20 +146,6 @@ class ChatLLM(BaseLLM):
         Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
         
-        self.mesaj_gecmisi = [
-            {"role": "system", "content": self.ana_kurallar}
-        ]
-    
-    def load_history(self, messages: list):
-        """Dışarıdan gelen oturum geçmişini LLM formatına çevirip yükler."""
-        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
-        for m in messages:
-            llm_role = "assistant" if m["role"].lower() == "ghost" else "user"
-            self.mesaj_gecmisi.append({
-                "role": llm_role,
-                "content": m["text"]
-            })
-
     def _raw_call(self) -> str:
         """Sadece API çağrısı yapar, mesaj geçmişine dokunmaz."""
         payload = {
@@ -129,27 +157,7 @@ class ChatLLM(BaseLLM):
         response = requests.post(self.api_url, json=payload, timeout=90)
         response.raise_for_status()
         return response.json()["message"]["content"].strip()
-        
-    def add_user(self, content: str):
-        self.mesaj_gecmisi.append({"role": "user", "content": content})
-        
-    def add_assistant(self, content: str):
-        self.mesaj_gecmisi.append({"role": "assistant", "content": content})
-        # Geçmişi sınırla mantığını buraya aldık ki raw_call sonrası da otomatik çalışsın
-        if len(self.mesaj_gecmisi) > 22:
-            self.mesaj_gecmisi = [self.mesaj_gecmisi[0]] + self.mesaj_gecmisi[-10:]
-
-    def generate(self, user_input: str) -> str:
-        """Eski tek atış — geriye dönük uyumluluk için kalıyor."""
-        self.add_user(user_input)
-        try:
-            res = self._raw_call()
-            self.add_assistant(res)
-            return res
-        except Exception as e:
-            self.mesaj_gecmisi.pop()
-            raise Exception(f"Yönetici Çöktü: {e}")
-        
+                
 # 2. İŞÇİ BEYİN
 class QwenWorker:
     def __init__(self, model="qwen3-coder:480b-cloud"):
@@ -226,50 +234,3 @@ class GhostController():
                     return os.path.join(user_home, *parcalar[3:])
                     
         return yol
-    
-    def _process_worker_tags(self, cevap: str) -> tuple[str, str]:
-        """Qwen işçisini çağıran o uzun bloğu TEEEEK bir yerde tutuyoruz."""
-        aktif_model = "GPT-OSS 120B (Yönetici)"
-        kod_istegi_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', cevap, flags=re.DOTALL | re.IGNORECASE)
-        
-        if kod_istegi_eslesme:
-            raw_yolu = kod_istegi_eslesme.group(1).strip()
-            dosya_yolu = self.yol_duzelt(raw_yolu)
-            talimat = kod_istegi_eslesme.group(2).strip()
-            aktif_model = "Qwen 480B (Mühendis Kodluyor...)"
-            
-            try:
-                mevcut_kod = ""
-                if os.path.exists(dosya_yolu):
-                    try:
-                        with open(dosya_yolu, "r", encoding="utf-8") as f:
-                            mevcut_kod = f.read()
-                    except Exception:
-                        pass
-
-                saf_kod = self.worker.saf_kod_uret(talimat=talimat, mevcut_kod=mevcut_kod)
-                    
-                ui_formati = f"[DOSYA_YAZ: {dosya_yolu}]\n<<<KOD_BASLANGIC>>>\n{saf_kod}\n<<<KOD_BITIS>>>"
-                cevap = cevap.replace(kod_istegi_eslesme.group(0), ui_formati)
-                
-            except Exception as e:
-                cevap = f"[SİSTEM HATA] Taşeron koda ulaşamadı: {e}"
-
-        return cevap, aktif_model
-
-    def _raw_supervisor_call(self) -> tuple[str, str]:
-        """Yeni ReAct (Agentic Loop) döngüsü için özel çağrı."""
-        try:
-            res = self.supervisor._raw_call()
-            self.supervisor.add_assistant(res)
-            return self._process_worker_tags(res)
-        except Exception as e:
-            raise Exception(f"Supervisor çöktü: {e}")
-
-    def generate(self, user_input: str) -> tuple[str, str]:
-        """Eski sistem komutları (örn: Ön-Mesaj, Uyanış vs) için çağrı."""
-        res = self.supervisor.generate(user_input)
-        return self._process_worker_tags(res)
-            
-    def __call__(self, user_input):
-        return self.generate(user_input)
