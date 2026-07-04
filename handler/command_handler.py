@@ -44,8 +44,6 @@ class CommandHandler:
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
         
-        # Araç Kayıt Defteri (Tool Registry)
-        # Format: "pattern_adi": (çalışacak_fonksiyon, yol_cozucu_kullanilsin_mi, parametre_sayisi)
         self.TOOL_REGISTRY = {
             "arama": {"func": self._tool_search, "yol_coz": False, "param_count": 1},
             "klasor_ac": {"func": self._tool_open_folder, "yol_coz": True, "param_count": 1},
@@ -59,37 +57,58 @@ class CommandHandler:
             "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
             "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2},
             "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1},
-            # 2 parametreli browser araçları — PATTERNS'daki formatla eşleşiyor
-            # Format: [TARAYICI_TIKLA: url | buton_adi]
             "tarayici_tikla": {"func": self._tool_browser_click, "yol_coz": False, "param_count": 2},
-            # Format: [TARAYICI_YAZ: url | kutu_adi | yazilacak_metin]
             "tarayici_yaz": {"func": self._tool_browser_type, "yol_coz": False, "param_count": 3},
             "site_oku": {"func": self._tool_read_website, "yol_coz": False, "param_count": 1},
             "gorev_bitti": {"func": self._tool_mission_complete, "yol_coz": False, "param_count": 1},
             "ekran_goruntusu": {"func": self._tool_take_screenshot, "yol_coz": False, "param_count": 1},
         }
 
+    # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
+    def _asistan_konus(self, metin: str):
+        """Asistanın sesli yanıt vermesini ve mikrofonun GÜVENLİ ŞEKİLDE yeniden açılmasını sağlar."""
+        self.app.is_speaking = True  # Kendi sesini duymaması için kulakları kapatır
+        
+        if not getattr(self.app, "_expanded", True):
+            set_voice_state(self.app, "speaking", "Konuşuyorum...")
+            
+        try:
+            self.app.konus.speak(metin) # Asistan konuşur
+        except Exception as e:
+            self.app.log(f"Ses motoru hatası: {e}", "red")
+        finally:
+            self.app.is_speaking = False  # Konuşma bitti, kulakları geri aç
+            
+            # Eğer hala sesli moddaysak sağır kalmamak için mikrofonu yeniden başlat
+            if self.app.voice_mode:
+                if not getattr(self.app, "_expanded", True):
+                    set_voice_state(self.app, "listening", "Dinliyorum...")
+                # Son yankıların bitmesi için 300ms bekleyip döngüyü sıfırlıyoruz
+                self.app.after(300, self.app.voice_handler.start_listening)
+
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
-    def handle(self, event=None):
-        """Entry'deki komutu alıp işleme döngüsünü başlatır."""
+    def handle(self, event=None, voice_text=None):
         self.son_komut_sesli = (event is None)
         
         if not self.son_komut_sesli:
             self.app.voice_mode = False
 
-        user_input = self.app.entry.get().strip()
+        if self.son_komut_sesli and voice_text:
+            user_input = voice_text.strip()
+        elif hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+            user_input = self.app.entry.get().strip()
+        else:
+            user_input = ""
+
         if not user_input:
             return
- 
-        # 1. Kapanış Kontrolü
+        
         if any(k in user_input.lower() for k in KAPANIŞ_KELİMELERİ):
             self.app.record_message(f"\nSen: {user_input}")
             self.app.record_message("Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.", "green")
             self.app.after(2000, self.app.destroy)
             return
 
-        # ----------------------------------------------------------------------
-        # ---> YENİ EKLENEN: ARAYÜZ GEÇİŞ KONTROLÜ (HIZLI MÜDAHALE)
         lower_input = user_input.lower()
         gecis_yapildi = False
         
@@ -104,34 +123,26 @@ class CommandHandler:
             gecis_yapildi = True
 
         if gecis_yapildi:
-            # Geçiş yapıldığını kaydet ve (eğer sesli moddaysa) söyle
             self.app.record_message("ghost", gecis_mesaji)
-            self.app.entry.delete(0, "end")
+            
+            if hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+                self.app.entry.delete(0, "end")
             
             if self.app.voice_mode:
-                # Mod değişirken Orb'un konuşma tepkisi vermesini sağla
-                from ui.compact_ui import set_voice_state
-                if not self.app._expanded:
-                    set_voice_state(self.app, "speaking", "Geçiş Yapılıyor...")
-                
-                self.app.konus.speak(gecis_mesaji)
-                
-                if not self.app._expanded:
-                    set_voice_state(self.app, "listening", "Dinliyorum...")
+                self._asistan_konus(gecis_mesaji)
             
-            # Eğer kullanıcı SADECE "Yazılı moda geç" dediyse (kelime sayısı azsa) LLM'i yormadan durdur.
-            # Ama "Terminali aç ve bana Beşiktaş'ın durumunu araştır" dediyse LLM işlemine devam etsin.
             kelime_sayisi = len(user_input.split())
             if kelime_sayisi <= 4: 
                 return
              
         self.app.record_message("user", user_input)
-        self.app.entry.delete(0, "end")
-        #self.app.record_message("Ghost", "Düşünüyor...")
+        
+        if hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+            self.app.entry.delete(0, "end")
+            
         self.app.set_model_label("Aktif Durum: Yönlendiriliyor...")
         
-        # ---> ORB: DÜŞÜNME MODUNA GEÇ <---
-        if not self.app._expanded:
+        if not getattr(self.app, "_expanded", True):
             set_voice_state(self.app, "thinking", "Düşünüyorum...")
 
         threading.Thread(
@@ -140,17 +151,13 @@ class CommandHandler:
             daemon=True
         ).start()
     
-# 4. _orchestrate_task içindeki sohbet kısmına durumları ekle:
     def _orchestrate_task(self, user_input):
 
-        if self.app._expanded:
-            # Geniş (Yazılı) ekran formatı
+        if getattr(self.app, "_expanded", True):
             sistem_notu = "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n"
         else:
-            # Kompakt (Sesli) ekran formatı
             sistem_notu = "[SİSTEM BİLGİSİ: Şu an KOMPAKT/SESLİ arayüzdesin. Cevaplarını çok KISA, NET ve bir sesli asistanın konuşacağı doğallıkta (maksimum 1-2 cümle) ver. Uzun listeler veya kod blokları KULLANMA.]\n"
             
-        # Modeli besleyeceğimiz zenginleştirilmiş girdi
         zengin_input = f"{sistem_notu}Kullanıcı Komutu: {user_input}"
 
         sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin","nasıl gidiyor"]
@@ -161,25 +168,22 @@ class CommandHandler:
                 response, model = self.controller(zengin_input)
                 self._update_model_label(model)
                 display = self._clean_response_for_display(response)
+                
                 if display and display.strip():
                     self.app.record_message("ghost", display)
-                    # ---> ORB: EĞER SESLİ MODDAYSAK KONUŞ VE DİNLEMEYE DÖN <---
                     if self.app.voice_mode:
-                        if not self.app._expanded:
-                            set_voice_state(self.app, "speaking", "Konuşuyorum...")
-                        self.app.konus.speak(display)
-                        if not self.app._expanded:
-                            set_voice_state(self.app, "listening", "Dinliyorum...")
+                        self._asistan_konus(display)
                             
             except Exception as e:
                 self.app.log(f"SİSTEM HATA: {e}", "red")
+                if self.app.voice_mode:
+                    self._asistan_konus("Sistemde bir hata oluştu Patron.")
             return
 
         self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
         self._agentic_loop(user_input)
 
     def run_startup(self):
-        """Uyanış cümlesi + ilk dinleme döngüsünü başlatır."""
         prompt = (
             "GİZLİ SİSTEM BİLGİSİ: Ghost, az önce nöbetçi modundan uyandırıldın. "
             "Hazır olduğunu bildiren o çok kısa, havalı giriş cümleni söyle. "
@@ -190,41 +194,27 @@ class CommandHandler:
             cevap, model = self.controller(prompt)
             self._update_model_label(model)
             self.app.record_message("ghost" ,cevap)
-            # ---> ORB: KONUŞMA MODUNA GEÇ <---
-            if not self.app._expanded:
-                set_voice_state(self.app, "speaking", "Sistem Aktif...")
-
-            self.app.konus.speak(cevap)
             
-            # ---> ORB: KONUŞMA MODUNA GEÇ <---
-            if not self.app._expanded:
-                set_voice_state(self.app, "listening", "Dinliyorum...")
-            
-            self.app.after(0, self.app.voice_handler.start_listening)
+            self._asistan_konus(cevap)
  
         except Exception as e:
             self.app.log(f"SİSTEM HATA (Uyanış): {e}", "red")
+            # Hata olsa bile sağır kalmaması için mikrofonu başlatıyoruz
+            self.app.after(300, self.app.voice_handler.start_listening)
  
-    # ── Ana işleme döngüsü ────────────────────────────────────────────────────
     def _agentic_loop(self, user_input: str):
-        """Gerçek ReAct döngüsü — model bitmediğini söyleyene kadar döner."""
         orijinal_hafiza_yedegi = list(self.controller.supervisor.mesaj_gecmisi)
-
-        # Kullanıcının asıl sorusunu sisteme ekle
         self.controller.supervisor.add_user(user_input)
         
-        # Sonsuz döngü koruması: Ghost'un aynı aracı üst üste çağırmasını engeller
         gecmis_arac_cagrilari = set() 
         final_mesaji = ""
 
-        for adim in range(5):  # max 5 adım, sonsuz döngü önlemi
+        for adim in range(5):  
             response, model = self.controller._raw_supervisor_call()
             self._update_model_label(model)
 
-            # Araç var mı kontrol et
             sonuc = self._araclari_calistir(response)
             
-            # --- GÖREV BİTTİ SİNYAL KONTROLÜ ---
             if sonuc and "GÖREV_TAMAMLANDI_SİNYALİ:" in sonuc:
                 match = re.search(r'GÖREV_TAMAMLANDI_SİNYALİ:\s*(.*)', sonuc, re.DOTALL)
                 final_mesaji = match.group(1).strip() if match else "Görev tamamlandı."
@@ -232,29 +222,16 @@ class CommandHandler:
                 
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
-                    if not self.app._expandad:
-                        set_voice_state(self.app,"speaking","Konuşuyorum...")
-
-                    self.app.konus.speak(final_mesaji)
-                    if not self.app._expandad:
-                        set_voice_state(self.app, "listening", "Dinliyorum...")
-                break # Döngüyü kır ve çık!
+                    self._asistan_konus(final_mesaji)
+                break 
             
             if sonuc is None:
-                # ÇIKIŞ ŞARTI: Etiket yoksa işlem başarıyla bitmiştir.
                 final_mesaji = self._clean_response_for_display(response)
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
-                    if not self.app._expanded:
-                        set_voice_state(self.app, "speaking", "Konuşuyorum...")
-                    self.app.konus.speak(final_mesaji)
-                    if not self.app._expanded:
-                        set_voice_state(self.app, "listening", "Dinliyorum...")
+                    self._asistan_konus(final_mesaji)
                 break
             
-            # KORUMA: Ghost aynı araç imzasını tekrar çağırdıysa
-            # response'un tamamını değil, içindeki etiketleri karşılaştır.
-            # Model her seferinde biraz farklı metin üretebilir ama etiketler aynı kalır.
             etiket_eslesmeler = re.findall(r'\[\s*[A-ZÇĞİÖŞÜ_]+\s*:.*?\]', response, re.IGNORECASE | re.DOTALL)
             arac_imzasi = "|".join(sorted(etiket_eslesmeler))
             
@@ -262,12 +239,13 @@ class CommandHandler:
                 self.app.log("SİSTEM UYARISI: Ghost aynı aracı tekrar denedi, döngü kırılıyor.", "red")
                 final_mesaji = "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?"
                 self.app.record_message("ghost", final_mesaji)
+                if self.app.voice_mode:
+                    self._asistan_konus(final_mesaji)
                 break
                 
             if arac_imzasi:
                 gecmis_arac_cagrilari.add(arac_imzasi)
             
-            # Araç sonucunu "SYSTEM" olarak modele besle
             self.controller.supervisor.mesaj_gecmisi.append({
                 "role": "system",
                 "content": (
@@ -278,30 +256,26 @@ class CommandHandler:
                 )
             })
         
-        # SİNSİ BUG'IN ÇÖZÜMÜ: Sadece final_mesaji boşsa (yani 5 adım başarısız dolduysa) uyar
         if not final_mesaji:
             self.app.log("SİSTEM: Maksimum işlem adımı aşıldı (5/5).", "red")
             final_mesaji = "Patron, bu işlem beklediğimden çok daha uzun sürdü. Sistemi yormamak için durdurdum."
             self.app.record_message("ghost", final_mesaji)
+            if self.app.voice_mode:
+                self._asistan_konus(final_mesaji)
             
-        # Hafızayı ilk temiz haline döndür
         self.controller.supervisor.mesaj_gecmisi = orijinal_hafiza_yedegi
         
-        # Sadece asıl soruyu ve döngüden çıkan o tek temiz cevabı ana hafızaya ekle
         if final_mesaji:
             self.controller.supervisor.add_user(user_input)
             self.controller.supervisor.add_assistant(final_mesaji)
                 
     def _araclari_calistir(self, response: str) -> str | None:
-        """Metin içindeki tüm araçları sırayla çalıştırıp yapılandırılmış sonuç (OBSERVATION) döner."""
         bulunan_araclar = []
 
-        # 1. Bütün patternleri tara ve eşleşmeleri metindeki konumlarına göre listeye ekle
         for pattern_adi, regex in PATTERNS.items():
             if pattern_adi not in self.TOOL_REGISTRY:
                 continue
             
-            # finditer ile metin içindeki tüm aynı ve farklı etiketleri bul
             for match in regex.finditer(response):
                 bulunan_araclar.append({
                     "isim": pattern_adi,
@@ -312,48 +286,36 @@ class CommandHandler:
         if not bulunan_araclar:
             return None
 
-        # 2. Araçları modelin metne yazdığı sıraya (kronolojik) göre diz
         bulunan_araclar.sort(key=lambda x: x["baslangic_indeksi"])
 
-        # Sonsuz döngü veya Ghost'un delirmesini önlemek için max 2 araç limiti
         MAX_TOOL = 2
         bulunan_araclar = bulunan_araclar[:MAX_TOOL]
 
         sonuclar = []
         
-        # 3. Araçları sırayla Ateşle
         for adim, arac in enumerate(bulunan_araclar):
             pattern_adi = arac["isim"]
             m = arac["match"]
             ayar = self.TOOL_REGISTRY[pattern_adi]
             
-            # Parametreleri dinamik olarak çek
             parametreler = []
             for i in range(1, ayar["param_count"] + 1):
-                # Regex'i toleranslı (strip vb.) hale getir
                 param = m.group(i).strip()
-                # Yalnızca ilk parametre yol ise akıllı çözücüden geçir
                 if i == 1 and ayar["yol_coz"]: 
                     param = akilli_yol_cozucu(param)
                 parametreler.append(param)
 
             try:
-                # Aracı çalıştır (*parametreler ile listeyi unpack yapıyoruz)
                 result = ayar["func"](*parametreler)
                 success = True
             except Exception as e:
-                # LLM'in kafası karışmasın diye ona kısa mesaj
                 result = f"Araç çalışırken çöktü: {str(e)}"
                 success = False
-                
-                # Senin arka planda hatayı görebilmen için tam Traceback
                 self.app.log(f"SİSTEM HATA DETAYI ({pattern_adi}):\n{traceback.format_exc()}", "red")
 
-            # Sistem arayüzüne (Geliştirici paneline) detaylı log bas
             self.app.log(f"🛠️ [ADIM {adim+1}/{len(bulunan_araclar)}] ARAÇ: {pattern_adi.upper()} | DURUM: {'✅' if success else '❌'}", "yellow")
             self.app.log(f"   Param: {parametreler} | Çıktı: {str(result)[:50]}...", "yellow")
 
-            # 4. Modele Yapılandırılmış Geri Bildirim (Observation) oluştur
             sonuclar.append(
                 f"OBSERVATION [Adım {adim+1}]:\n"
                 f"tool={pattern_adi}\n"
@@ -362,10 +324,8 @@ class CommandHandler:
                 f"{'-'*20}"
             )
 
-        # Tüm tool'ların sonucunu modele tek bir blok halinde gönder
         return "\n".join(sonuclar)
     
-    # ── Bellek zenginleştirme ─────────────────────────────────────────────────
     def _enrich_with_memory(self, user_input: str) -> str:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
             return user_input
@@ -383,10 +343,8 @@ class CommandHandler:
             f"Kullanıcı Komutu: {user_input}"
         )
  
-    # ── Ekran temizliği ───────────────────────────────────────────────────────
     @staticmethod
     def _clean_response_for_display(response: str) -> str:
-        # 1. Mühendis kod bloklarını şık ikonlara çevir
         result = re.sub(
             r'\[.*?KOD_BASLANGIC>>>.*?<<<KOD_BITIS>>>',
             '[⚙️ Kod dosyaya yazılıyor...]',
@@ -400,37 +358,32 @@ class CommandHandler:
             flags=re.IGNORECASE,
         )
 
-        # 2. Arka plan sistem etiketlerini tamamen yok et (örn: [OPEN_APP: chrome])
         etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|GOREV_BITTI|TARAYICI_TIKLA|TARAYICI_YAZ|GOZLEM_YAP|SİTE_OKU|EKRAN_GORUNTUSU):.*?\]'        
         result = re.sub(etiketler, '', result, flags=re.IGNORECASE)
         
-        # 3. Planlayıcının ürettiği boş/sessiz hedefleri ([TASARIM], [KONTEKST_BELİR]) sil
         result = re.sub(r'\[[A-Z_İĞÜŞÖÇ]+\]', '', result)
         
-        # Geriye sadece tertemiz muhabbet kalır
         return result.strip()
         
-    # ── Model label güncellemesi ──────────────────────────────────────────────
     def _update_model_label(self, model: str):
-        color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
-        self.app.set_model_label(f"Aktif Durum: {model}", color)
-    
-    # ── Web sitesinde tıklama ──────────────────────────────────────────────
+        try:
+            color = "#00FFcc" if "oss" in model.lower() else "#FF9500"
+            self.app.set_model_label(f"Aktif Durum: {model}", color)
+        except Exception as e:
+            pass
+
     def _tool_browser_click(self, url: str, hedef_metin: str) -> str:
         self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine tıklanıyor...", "green")
         from tools.browser_tool import browser_interact
         return browser_interact(url, "tikla", hedef_metin)
     
-    # ── Sitedeki Metni/Makaleyi Okuma ──────────────────────────────────────────
     def _tool_read_website(self, url: str) -> str:
         self.app.log(f"SİSTEM: '{url}' içeriği (metin olarak) okunuyor...", "green")
         from tools.google_tool import read_webpage
         
         try:
             icerik = read_webpage(url)
-            # Metin başarıyla çekildiyse
             if icerik and "okunamadı" not in icerik:
-                # Context window'u patlatmamak için ilk 3500 karakteri (yaklaşık 1-2 sayfa) alıyoruz
                 return (f"SİTE İÇERİĞİ ({url}):\n\n{icerik[:3500]}...\n\n"
                         f"[ÖLÜMCÜL SİSTEM TALİMATI: Sayfayı başarıyla okudun! ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. "
                         f"Asla yeni bir [ETİKET] yazma. Sadece yukarıdaki metne bakarak Patron'a cevabını ver. "
@@ -440,17 +393,14 @@ class CommandHandler:
         except Exception as e:
             return f"Okuma sırasında hata oluştu: {str(e)}"
         
-    # ── Web sitesinde yazma ──────────────────────────────────────────────
     def _tool_browser_type(self, url: str, hedef_metin: str, yazi_icerigi: str) -> str:
         self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine '{yazi_icerigi}' yazılıyor...", "green")
         from tools.browser_tool import browser_interact
         return browser_interact(url, "yaz", hedef_metin, yazi_icerigi)
 
-    # ── Web sitesi ve Masaüstünğ görebilme ──────────────────────────────────────────────
     def _tool_browser_observe(self, hedef: str) -> str:
         hedef = hedef.lower().strip()
         
-        # 1. DURUM: HEDEF BİR WEB SİTESİ İSE (DOM + Vision Fallback)
         if hedef.startswith("http") or "www" in hedef or ".com" in hedef:
             self.app.log(f"SİSTEM: '{hedef}' için DOM analizi başlatılıyor...", "green")
             try:
@@ -465,12 +415,10 @@ class CommandHandler:
                 
             soru = f"Şu an tarayıcıda '{hedef}' açık. Etkileşime girilebilecek (tıklanabilir veya yazı yazılabilir) temel öğeler nelerdir? Konumlarını 'sağ üst', 'merkez' gibi genel ifadelerle belirt."
 
-        # 2. DURUM: HEDEF MASAÜSTÜ/EKRAN İSE (Doğrudan Vision'a Geç)
         else:
             self.app.log("SİSTEM: Doğrudan masaüstü analizi için LLaVA Gözleri Açılıyor...", "green")
             soru = "Şu an bilgisayarın masaüstü ekranına bakıyorsun. Ekranda hangi uygulamalar, açık pencereler veya tıklanabilir öğeler var? Konumlarını belirt."
 
-        # LLaVA Vision İşlemi (Hem masaüstü hem de çöken tarayıcı için ortak nokta)
         kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_temp_vision.png")
         try:
             ekran = PIL.ImageGrab.grab(all_screens=True)
@@ -482,34 +430,25 @@ class CommandHandler:
         except Exception as e:
             return f"Gözlem tamamen başarısız oldu: {str(e)}"
         
-    # ── Görev tamam mı ────────────────────────────────────────────────────
     def _tool_mission_complete(self, nihai_cevap: str) -> str:
-        """Ghost görevi bitirdiğinde bu sinyali agentic loop'a fırlatır."""
         return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
     
-    # ── Otonom Ekran Görüntüsü (Ghost'un Gözleri) ─────────────────────────
     def _tool_take_screenshot(self, soru: str) -> str:
         self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{soru}'", "green")
         kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_auto_screenshot.png")
         
         try:
-            # 1. UI'ı gizle (Ghost kendi penceresini çekmesin)
             self.app.iconify()
             time.sleep(0.5) 
             
-            # 2. Ekran resmini al
             import PIL.ImageGrab
             ekran = PIL.ImageGrab.grab(all_screens=True)
             ekran.save(kayit_yolu)
             
-            # 3. UI'ı geri getir
             self.app.deiconify()
             
-            # 4. Arayüzde modeli "Vision" olarak göster
             self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
 
-            # 4
-            # 5. LLaVA'ya gönder ve analiz ettir
             from vison.vison import minimax_vision_analiz
             basarili_mi, saf_kod, mesaj = minimax_vision_analiz(soru, kayit_yolu)
             
@@ -522,13 +461,11 @@ class CommandHandler:
             self.app.deiconify()
             return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
         
-    # ── 3 Aşamalı Otonom Arama (DDG -> Playwright -> LLaVA) ───────────────────
     def _tool_search(self, query: str) -> str:
         self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{query}'...", "green")
         from tools.google_tool import search_duckduckgo, _format_results
         
         try:
-            # 1. PLAN A: DuckDuckGo Kütüphanesi (Hızlı ve Ücretsiz)
             ddg_results = search_duckduckgo(query)
             formatted = _format_results(ddg_results)
             
@@ -542,7 +479,6 @@ class CommandHandler:
         except Exception as e:
             self.app.log(f"SİSTEM UYARISI: DDG başarısız ({str(e)[:30]}). Plan B (Fiziksel Tarayıcı) başlıyor...", "yellow")
             
-            # 2. PLAN B: Fiziksel Tarayıcı (Playwright)
             from tools.browser_tool import browser_google_search
             try:
                 arama_sonuclari = browser_google_search(query)
@@ -555,13 +491,10 @@ class CommandHandler:
                         f"[SİTE_OKU: <url>] aracını kullan.]")
             
             except Exception as e2:
-                # 3. PLAN C: Görsel Arama Fallback (LLaVA)
                 self.app.log("SİSTEM HATA: Tarayıcı DOM'u çöktü. Plan C (LLaVA Görsel) başlıyor...", "yellow")
                 return self._visual_search_fallback(query)
    
-    # ── Google da arama yapma konusunda hata alırsak  ───────────────────
     def _visual_search_fallback(self, query: str) -> str:
-        """API'ler çöktüğünde fiziksel olarak Chrome açıp LLaVA ile okuma yapar."""
         import urllib.parse
         from playwright.sync_api import sync_playwright
         
@@ -594,7 +527,6 @@ class CommandHandler:
         except Exception as e:
             return f"Maalesef Görsel Arama B Planı da başarısız oldu: {str(e)}\nLütfen Kullanıcıya internet bağlantısı sorunu olduğunu söyle."
                             
-    # ── Eylem işleyicileri ────────────────────────────────────────────────────
     def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
             os.startfile(path)
@@ -609,7 +541,6 @@ class CommandHandler:
             
         return "Klasör bulunamadı."
     
-    # ── Uygulama açma ────────────────────────────────────────────────────
     def _tool_open_app(self, name: str) -> str:
         name = name.lower()
         self.app.log(f"SİSTEM: '{name}' başlatılıyor...", "green")
@@ -640,14 +571,12 @@ class CommandHandler:
             
         return f"'{name}' uygulaması başlatıldı komutu verildi."
 
-    # ── Müzik çalma ────────────────────────────────────────────────────
     def _tool_play_song(self, song: str) -> str:
         self.app.log(f"SİSTEM: Spotify'da '{song}' aranıyor...", "green")
         try:
             result = self.spotify.play_specific_song(song)
             return f"Spotify Sonucu: {result}"
         except Exception as e:
-            # Cihaz kapalıysa playlist ile dürtme mantığı
             if any(k in str(e).lower() for k in ["device", "active", "not found"]):
                 try:
                     self.spotify.play_playlist("mesela yanii")
@@ -658,25 +587,21 @@ class CommandHandler:
                     return f"Cihaz uyandırılamadı: {e2}"
             return f"Spotify Hatası: {e}"
 
-    # ── Playlist açma ────────────────────────────────────────────────────
     def _tool_play_playlist(self, playlist: str) -> str:
         self.app.log(f"SİSTEM: '{playlist}' listesi aranıyor...", "green")
         result = self.spotify.play_playlist(playlist)
         return f"Spotify Sonucu: {result}"
 
-    # ── Hafızaya not etme ────────────────────────────────────────────────────
     def _tool_save_note(self, note: str) -> str:
         self.bellek.bellege_yaz(note)
         self.app.log(f"SİSTEM: Beyne kazındı → '{note}'", "green")
         return "Not başarıyla belleğe kaydedildi."
 
-    # ── Klasör oluşturma ────────────────────────────────────────────────────
     def _tool_make_folder(self, path: str) -> str:
         os.makedirs(path, exist_ok=True)
         self.app.log(f"SİSTEM: Klasör oluşturuldu → {path}", "green")
         return f"'{path}' dizininde klasör başarıyla oluşturuldu."
 
-    # ── Klasörde gezinme ────────────────────────────────────────────────────
     def _tool_inspect_folder(self, path: str) -> str:
         if os.path.isdir(path):
             files = ", ".join(os.listdir(path)) or "Klasör boş."
@@ -684,7 +609,6 @@ class CommandHandler:
             return f"Klasör İçeriği: {files}"
         return "Belirtilen yol bir klasör değil veya bulunamadı."
 
-    # ── Dosya yazma ────────────────────────────────────────────────────
     def _tool_write_file(self, path: str, code: str) -> str:
         folder = os.path.dirname(path)
         if folder:
@@ -694,7 +618,6 @@ class CommandHandler:
         self.app.log(f"SİSTEM: Dosya yazıldı → {path}", "green")
         return f"Kod başarıyla '{path}' konumuna kaydedildi."
 
-    # ── Kod Çalıştırma ────────────────────────────────────────────────────
     def _tool_run_code(self, path: str) -> str:
         self.app.log(f"SİSTEM: '{path}' çalıştırılıyor...", "green")
         result = kodu_calistir(path)
@@ -705,14 +628,12 @@ class CommandHandler:
         self.app.log("SİSTEM ⚠️ Hata tespit edildi...", "red")
         return f"Kod çalıştırılırken hata verdi. Lütfen hatayı inceleyip düzelt:\n{result['hata']}"
 
-    # ── Dosya Okuma ────────────────────────────────────────────────────
     def _tool_read_file(self, path: str) -> str:
         if os.path.isfile(path):
             content = open(path, encoding="utf-8").read()
             self.app.log(f"SİSTEM: '{path}' okundu.", "green")
             return f"Dosya İçeriği:\n{content}"
             
-        # Dosya yoksa, klasörü kontrol et
         folder = os.path.dirname(path)
         if os.path.isdir(folder):
             files = ", ".join(os.listdir(folder)) or "Klasör boş."
