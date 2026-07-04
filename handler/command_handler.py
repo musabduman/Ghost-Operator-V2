@@ -38,7 +38,7 @@ class CommandHandler:
         self.app = app
         self.son_komut_sesli = False
         self.bellek = Bellek()
-        self.controller = GhostController()
+        self.controller = GhostController(tool_runner=self._araclari_calistir)        
         self.spotify = SpotifyManager()
         self.planner = PlannerAgent()
         self.islem_kuyrugu = queue.Queue()
@@ -203,72 +203,34 @@ class CommandHandler:
             self.app.after(300, self.app.voice_handler.start_listening)
  
     def _agentic_loop(self, user_input: str):
-        orijinal_hafiza_yedegi = list(self.controller.supervisor.mesaj_gecmisi)
-        self.controller.supervisor.add_user(user_input)
+        # Kullanıcı isteğini modelin kök hafızasına ekle
+        self.controller.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
         
-        gecmis_arac_cagrilari = set() 
-        final_mesaji = ""
-
-        for adim in range(5):  
-            response, model = self.controller._raw_supervisor_call()
+        try:
+            # Sihir burada gerçekleşir! LangGraph arka planda araçları çalıştırır, 
+            # düşünür ve işi bittiğinde nihai cevabı döndürür.
+            cevap, model = self.controller._raw_supervisor_call()
             self._update_model_label(model)
-
-            sonuc = self._araclari_calistir(response)
             
-            if sonuc and "GÖREV_TAMAMLANDI_SİNYALİ:" in sonuc:
-                match = re.search(r'GÖREV_TAMAMLANDI_SİNYALİ:\s*(.*)', sonuc, re.DOTALL)
-                final_mesaji = match.group(1).strip() if match else "Görev tamamlandı."
-                final_mesaji = self._clean_response_for_display(final_mesaji)
+            # İşçinin veya Yöneticinin nihai cevabını temizle
+            final_mesaji = self._clean_response_for_display(cevap)
+            
+            if final_mesaji:
+                self.app.record_message("ghost", final_mesaji)
+                if self.app.voice_mode:
+                    self._asistan_konus(final_mesaji)
+                    
+            # Geriye dönük uyumluluk: Eğer çıktı içinde kod dosyası varsa _araclari_calistir onu yakalayıp kaydetsin
+            if "[DOSYA_YAZ:" in cevap:
+                self._araclari_calistir(cevap)
                 
-                self.app.record_message("ghost", final_mesaji)
-                if self.app.voice_mode:
-                    self._asistan_konus(final_mesaji)
-                break 
-            
-            if sonuc is None:
-                final_mesaji = self._clean_response_for_display(response)
-                self.app.record_message("ghost", final_mesaji)
-                if self.app.voice_mode:
-                    self._asistan_konus(final_mesaji)
-                break
-            
-            etiket_eslesmeler = re.findall(r'\[\s*[A-ZÇĞİÖŞÜ_]+\s*:.*?\]', response, re.IGNORECASE | re.DOTALL)
-            arac_imzasi = "|".join(sorted(etiket_eslesmeler))
-            
-            if arac_imzasi and arac_imzasi in gecmis_arac_cagrilari:
-                self.app.log("SİSTEM UYARISI: Ghost aynı aracı tekrar denedi, döngü kırılıyor.", "red")
-                final_mesaji = "Sanırım burada bir döngüye girdim Patron. Başka bir yoldan ilerleyelim mi?"
-                self.app.record_message("ghost", final_mesaji)
-                if self.app.voice_mode:
-                    self._asistan_konus(final_mesaji)
-                break
-                
-            if arac_imzasi:
-                gecmis_arac_cagrilari.add(arac_imzasi)
-            
-            self.controller.supervisor.mesaj_gecmisi.append({
-                "role": "system",
-                "content": (
-                    f"[SİSTEM BİLDİRİMİ - ARAÇ ÇIKTISI - ADIM {adim+1}]\n"
-                    f"{sonuc}\n\n"
-                    f"GİZLİ TALİMAT: Eğer görev tamamlandıysa ve kullanıcıya son cevabı vereceksen, "
-                    f"HİÇBİR [ETİKET] KULLANMA. Doğrudan doğal ve havalı karakterinle cevap yaz."
-                )
-            })
-        
-        if not final_mesaji:
-            self.app.log("SİSTEM: Maksimum işlem adımı aşıldı (5/5).", "red")
-            final_mesaji = "Patron, bu işlem beklediğimden çok daha uzun sürdü. Sistemi yormamak için durdurdum."
-            self.app.record_message("ghost", final_mesaji)
+        except Exception as e:
+            self.app.log(f"SİSTEM: LangGraph Döngüsü Kırıldı: {e}", "red")
+            hata_mesaji = "Patron, işlem sırasında bir hata oluştu."
+            self.app.record_message("ghost", hata_mesaji)
             if self.app.voice_mode:
-                self._asistan_konus(final_mesaji)
-            
-        self.controller.supervisor.mesaj_gecmisi = orijinal_hafiza_yedegi
-        
-        if final_mesaji:
-            self.controller.supervisor.add_user(user_input)
-            self.controller.supervisor.add_assistant(final_mesaji)
-                
+                self._asistan_konus(hata_mesaji)
+
     def _araclari_calistir(self, response: str) -> str | None:
         bulunan_araclar = []
 
