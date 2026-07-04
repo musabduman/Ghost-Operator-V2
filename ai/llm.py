@@ -7,43 +7,10 @@ from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 
 # 1. ORTAK BİLİNÇ (State)
-# ChatLLM'deki manuel 'mesaj_gecmisi' listesinin yerini alır
 class GhostState(TypedDict):
     messages: Annotated[list, operator.add]
     son_istenen_dosya: str
     son_talimat: str
-
-# 2. DÜĞÜMLER (Nodes)
-def supervisor_node(state: GhostState):
-    # ChatLLM (_raw_call) burada çalışır
-    # Eğer model [KOD_ISTE: dosya | talimat] üretirse, bu bilgileri state'e kaydeder
-    pass
-
-def coder_node(state: GhostState):
-    # QwenWorker burada çalışır
-    # state["son_talimat"] ve state["son_istenen_dosya"] verilerini alıp kod üretir
-    pass
-
-# 3. KARAR MEKANİZMASI (Conditional Edge)
-def yonlendirici(state: GhostState):
-    son_mesaj = state["messages"][-1]
-    if "[KOD_ISTE" in son_mesaj:
-        return "coder" # Qwen'e yolla
-    elif "[GOREV_BITTI" in son_mesaj:
-        return END # Döngüyü bitir, Patron'a cevap ver
-    else:
-        return "tools" # command_handler'a yolla
-
-# GRAPH İNŞASI
-workflow = StateGraph(GhostState)
-workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("coder", coder_node)
-
-workflow.set_entry_point("supervisor")
-workflow.add_conditional_edges("supervisor", yonlendirici)
-workflow.add_edge("coder", "supervisor") # Mühendis kodu yazınca tekrar Yöneticiye döner
-
-ghost_brain = workflow.compile()
 
 class BaseLLM:
     def generate(self, prompt):
@@ -57,7 +24,7 @@ class ChatLLM(BaseLLM):
     def __init__(self, api_key=None, model="gpt-oss:120b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
-        self.os_name = platform.system() # İşletim sistemini otomatik algıla
+        self.os_name = platform.system() 
         
         self.ana_kurallar = rf"""
         [KİMLİK VE ROL]
@@ -146,8 +113,11 @@ class ChatLLM(BaseLLM):
         Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
         
+        # Command handler'ın ve kendi hafızasının sorunsuz çalışması için mesaj geçmişi başlatılır
+        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+        
     def _raw_call(self) -> str:
-        """Sadece API çağrısı yapar, mesaj geçmişine dokunmaz."""
+        """Sadece API çağrısı yapar, doğrudan kök mesaj geçmişini kullanır."""
         payload = {
             "model": self.model,
             "messages": self.mesaj_gecmisi,
@@ -211,26 +181,136 @@ class QwenWorker:
             raise Exception(f"Taşeron (Qwen) Çöktü: {e}")
 
 # 3. ORKESTRA ŞEFİ
-class GhostController():
-    def __init__(self, api_key=None): 
+class GhostController:
+    # EKLENTİ 1: tool_runner parametresi eklendi
+    def __init__(self, tool_runner=None): 
         self.supervisor = ChatLLM(model="gpt-oss:120b-cloud") 
         self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
+        self.tool_runner = tool_runner 
+        
+        self.graph = self._build_graph()
     
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")
-        
-        # İşletim sistemine göre slash'leri ve mantığı uyarla
         if platform.system() == "Windows":
             yol = os.path.normpath(yol.replace("/", "\\")) 
             if "Users\\" in yol:
                 parcalar = yol.split("\\")
                 if len(parcalar) > 3:
                     return os.path.join(user_home, *parcalar[3:])
-        else: # Linux / Mac OS
+        else:
             yol = os.path.normpath(yol.replace("\\", "/"))
             if "/home/" in yol:
                 parcalar = yol.split("/")
                 if len(parcalar) > 3:
                     return os.path.join(user_home, *parcalar[3:])
-                    
         return yol
+
+    def _build_graph(self):
+        workflow = StateGraph(GhostState)
+
+        def supervisor_node(state: GhostState):
+            response = self.supervisor._raw_call()
+            
+            kod_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', response, re.DOTALL | re.IGNORECASE)
+            dosya = kod_eslesme.group(1).strip() if kod_eslesme else ""
+            talimat = kod_eslesme.group(2).strip() if kod_eslesme else ""
+            
+            return {
+                "messages": [{"role": "assistant", "content": response}],
+                "son_istenen_dosya": dosya,
+                "son_talimat": talimat
+            }
+
+        def coder_node(state: GhostState):
+            dosya_yolu = self.yol_duzelt(state["son_istenen_dosya"])
+            talimat = state["son_talimat"]
+            
+            mevcut_kod = ""
+            if os.path.exists(dosya_yolu):
+                try:
+                    with open(dosya_yolu, "r", encoding="utf-8") as f:
+                        mevcut_kod = f.read()
+                except Exception:
+                    pass
+                    
+            try:
+                saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod)
+                ui_formati = f"[DOSYA_YAZ: {dosya_yolu}]\n<<<KOD_BASLANGIC>>>\n{saf_kod}\n<<<KOD_BITIS>>>"
+                return {"messages": [{"role": "assistant", "content": ui_formati}]}
+            except Exception as e:
+                return {"messages": [{"role": "assistant", "content": f"[SİSTEM HATA] Taşeron çöktü: {e}"}]}
+
+        # YENİ DÜĞÜM: Araçları Graph İçinde Çalıştıran Merkez
+        def tools_node(state: GhostState):
+            son_mesaj = state["messages"][-1]["content"]
+            
+            if self.tool_runner:
+                # Command handler'daki regex motorunu çağır
+                sonuc = self.tool_runner(son_mesaj)
+                
+                if sonuc:
+                    if "GÖREV_TAMAMLANDI_SİNYALİ:" in sonuc:
+                        # Görev bittiyse Patron'a verilecek cevabı state'e yaz
+                        match = re.search(r'GÖREV_TAMAMLANDI_SİNYALİ:\s*(.*)', sonuc, re.DOTALL)
+                        final_cevap = match.group(1).strip() if match else "Görev tamamlandı."
+                        return {"messages": [{"role": "system", "content": f"[SİSTEM BİLDİRİMİ]\nGörev başarıyla bitti. Kullanıcıya şu cevabı ver: {final_cevap}"}]}
+                    else:
+                        # Araç çalıştıysa sonucunu sisteme bildir
+                        return {"messages": [{"role": "system", "content": f"[SİSTEM BİLDİRİMİ - ARAÇ ÇIKTISI]\n{sonuc}\nŞimdi bu sonuca göre düşün ve sıradaki adımı at."}]}
+            
+            # Eğer tool bulunamazsa veya fail olursa kördüğüme girmemesi için
+            return {"messages": [{"role": "system", "content": "[SİSTEM UYARISI] Araç çalıştırılamadı veya etiket hatalı."}]}
+
+        # YENİ YÖNLENDİRİCİ: Çok daha akıllı bir karar mekanizması
+        def yonlendirici(state: GhostState):
+            son_mesaj = state["messages"][-1]["content"]
+            
+            if "[KOD_ISTE" in son_mesaj:
+                return "coder"
+            elif "[GOREV_BITTI" in son_mesaj:
+                return END
+            # GOREV_BITTI veya KOD_ISTE dışındaki diğer tüm [ETİKET] kullanımlarında tools node'a git
+            elif re.search(r'\[[A-ZÇĞİÖŞÜ_]+:.*?\]', son_mesaj): 
+                return "tools"
+            else:
+                return END
+
+        workflow.add_node("supervisor", supervisor_node)
+        workflow.add_node("coder", coder_node)
+        workflow.add_node("tools", tools_node) # Araç düğümünü ağa ekledik
+        
+        workflow.set_entry_point("supervisor")
+        workflow.add_conditional_edges("supervisor", yonlendirici)
+        
+        # MÜKEMMEL DÖNGÜ: Araç çalıştıktan sonra sonuçla birlikte Yöneticiye geri döner!
+        workflow.add_edge("tools", "supervisor") 
+        
+        # Kod yazıldıktan sonra doğrudan Patron'a gösterilmesi için döngüyü bitir
+        workflow.add_edge("coder", END) 
+        
+        return workflow.compile()
+
+    def _raw_supervisor_call(self) -> tuple[str, str]:
+        baslangic_durumu = {
+            "messages": self.supervisor.mesaj_gecmisi,
+            "son_istenen_dosya": "",
+            "son_talimat": ""
+        }
+        
+        # LangGraph'a özgü recursion limit! (Döngü limiti 5'ten 15'e çıktı, graph kendi yönetir)
+        config = {"recursion_limit": 15}
+        sonuc_state = self.graph.invoke(baslangic_durumu, config)
+        
+        son_mesaj = sonuc_state["messages"][-1]["content"]
+        
+        self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": son_mesaj})
+        
+        model_name = "Qwen 480B (Mühendis Kodluyor...)" if "[DOSYA_YAZ:" in son_mesaj else "GPT-OSS 120B (Yönetici)"
+        
+        return son_mesaj, model_name
+
+    def __call__(self, user_input):
+        self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
+        cevap, model = self._raw_supervisor_call()
+        return cevap, model
