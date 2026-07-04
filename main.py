@@ -105,8 +105,11 @@ class GhostOperatorUI(ctk.CTk):
             append_chat_bubble(self, m["role"], m["text"])
 
     def compact_mode(self):
-        if self._expanded:
-            self._load_compact()
+        self._expanded = False
+        self.voice_mode = True
+        
+        # ---> YENİ EKLENEN: Arayüze geçtikten yarım saniye sonra dinlemeyi zorla başlat
+        self.after(500, self.voice_handler.start_listening)
 
     def expand_mode(self):
         if not self._expanded:
@@ -202,9 +205,14 @@ class GhostOperatorUI(ctk.CTk):
             print(f"{prefix} Adım {i}: {adim}")
         print("="*40 + "\n")
         
+    # ── Arayüzü ayaralar ────────────────────────────────────────    
     def set_model_label(self, text: str, color: str = "#888888"):
-        self.after(0, lambda: self.model_label.configure(text=text, text_color=color))
-
+        def update_label():
+            if hasattr(self, 'model_label') and self.model_label.winfo_exists():
+                self.model_label.configure(text=text, text_color=color)
+        
+        self.after(0, update_label)
+    
     # ── Başlangıç ─────────────────────────────────────────────────────────────
 
     def _play_startup_sound(self):
@@ -234,7 +242,6 @@ class GhostOperatorUI(ctk.CTk):
         if os.path.exists("ghost_mesgul.lock"):
             os.remove("ghost_mesgul.lock")
         self.destroy()
-
 
 if __name__ == "__main__":
     app = GhostOperatorUI()
