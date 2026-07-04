@@ -104,7 +104,7 @@ class GhostOperatorUI(ctk.CTk):
         for m in self._messages:
             append_chat_bubble(self, m["role"], m["text"])
 
-    def compact_mode(self):
+    def compact_mode(self): 
         self._expanded = False
         self.voice_mode = True
         
