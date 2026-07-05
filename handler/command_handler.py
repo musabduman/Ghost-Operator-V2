@@ -320,11 +320,20 @@ class CommandHandler:
             flags=re.IGNORECASE,
         )
 
-        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|GOREV_BITTI|TARAYICI_TIKLA|TARAYICI_YAZ|GOZLEM_YAP|SİTE_OKU|EKRAN_GORUNTUSU):.*?\]'        
+        # GOREV_BITTI özel durum: etiketi kaldır ama İÇERİĞİNİ KORU
+        result = re.sub(
+            r'\[GOREV_BITTI:\s*(.*?)\]',
+            r'\1',
+            result,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        # GOREV_BITTI artık aşağıdaki listede yok — yukarıda ayrı işlendi
+        etiketler = r'\[(?:OPEN_FOLDER|OPEN_APP|ARAMA|ŞARKI_AÇ|PLAYLIST_AÇ|NOT_AL|KLASOR_YAP|DOSYA_OKU|KLASOR_INCELE|KODU_CALISTIR|DOSYA_YAZ|TARAYICI_TIKLA|TARAYICI_YAZ|GOZLEM_YAP|SİTE_OKU|EKRAN_GORUNTUSU):.*?\]'        
         result = re.sub(etiketler, '', result, flags=re.IGNORECASE)
-        
+
         result = re.sub(r'\[[A-Z_İĞÜŞÖÇ]+\]', '', result)
-        
+
         return result.strip()
         
     def _update_model_label(self, model: str):

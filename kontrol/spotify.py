@@ -66,7 +66,7 @@ class SpotifyManager:
 
             # 3. Şarkıyı çal
             self.sp.start_playback(uris=[track_uri])
-            return f"{artist_name} - {track_name} açılıyor."
+            return f"BAŞARILI: '{artist_name} - {track_name}' şarkısı Spotify'da çalmaya başladı. İŞLEM TAMAMLANDI. Lütfen bir daha [ŞARKI_AÇ] aracını ÇAĞIRMA. Eğer elinde önceki adımlardan kalan bilgiler (örn: Arama sonuçları) varsa, onları da toparlayarak KESİNLİKLE [GOREV_BITTI: <nihai_cevap>] etiketini kullan."
             
         except spotipy.exceptions.SpotifyException as e:
             # Hata yakalama (Cihaz aktif değilse veya Premium yoksa genelde bura patlar)
@@ -105,7 +105,7 @@ class SpotifyManager:
 
             # 4. Çalma listesini başlat (context_uri kullanıyoruz dikkat et!)
             self.sp.start_playback(device_id=device_id, context_uri=hedef_uri)
-            return f"'{gercek_isim}' listesini başlattım. Keyfini çıkar patron!"
+            return f"BAŞARILI: '{gercek_isim}' listesi başlatıldı. Lütfen bir daha [PLAYLIST_AÇ] aracını ÇAĞIRMA. İşlemi sonlandırmak için KESİNLİKLE [GOREV_BITTI: <nihai_cevap>] etiketini kullan."
 
         except spotipy.exceptions.SpotifyException as e:
             return f"Çalma listesi açılamadı. Detay: {e}"
