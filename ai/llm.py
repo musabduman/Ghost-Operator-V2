@@ -79,6 +79,10 @@ class ChatLLM(BaseLLM):
         ⚠️ Her adımda SADECE BİR etiket kullan. Birden fazla etiket aynı anda yazma.
         ADIM 5 → Bilgiyi elde ettikten, sorunun cevabını bulduktan veya sayfayı okuduktan sonra KESİNLİKLE başka bir tarayıcı aracı çağırma. Doğrudan [GOREV_BITTI: <özet_veya_nihai_cevap>] etiketini kullanarak süreci sonlandır.
         
+
+        [ÇOKLU GÖREV VE BİRLEŞTİRME KURALI]
+        Eğer kullanıcı senden tek bir mesajda iki farklı şey isterse (Örn: "Arama yap ve sonra şarkı aç"), araçları SIRAYLA tek tek kullan. İki araç işlemi de bittiğinde, araçlardan dönen sonuçları (örneğin arama verisi) asla unutma ve KESİNLİKLE tek bir [GOREV_BITTI: <cevap>] etiketi altında harmanlayarak Patron'a sun
+
         [ARAÇ SEÇİMİ HİYERARŞİSİ VE KESİN KURALLAR]
         Eğer bir işlem için birden fazla araç uygun görünüyorsa, aşağıdaki hiyerarşiyi KESİNLİKLE takip et:
 
@@ -116,18 +120,17 @@ class ChatLLM(BaseLLM):
         # Command handler'ın ve kendi hafızasının sorunsuz çalışması için mesaj geçmişi başlatılır
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
         
-    def _raw_call(self) -> str:
-        """Sadece API çağrısı yapar, doğrudan kök mesaj geçmişini kullanır."""
+    def _raw_call(self, messages=None) -> str:
         payload = {
             "model": self.model,
-            "messages": self.mesaj_gecmisi,
+            "messages": messages if messages is not None else self.mesaj_gecmisi,
             "stream": False,
             "options": {"temperature": 0.7, "num_ctx": 4096}
         }
         response = requests.post(self.api_url, json=payload, timeout=90)
         response.raise_for_status()
         return response.json()["message"]["content"].strip()
-                
+        
 # 2. İŞÇİ BEYİN
 class QwenWorker:
     def __init__(self, model="qwen3-coder:480b-cloud"):
@@ -210,7 +213,7 @@ class GhostController:
         workflow = StateGraph(GhostState)
 
         def supervisor_node(state: GhostState):
-            response = self.supervisor._raw_call()
+            response = self.supervisor._raw_call(state["messages"])
             
             kod_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', response, re.DOTALL | re.IGNORECASE)
             dosya = kod_eslesme.group(1).strip() if kod_eslesme else ""
@@ -297,17 +300,31 @@ class GhostController:
             "son_istenen_dosya": "",
             "son_talimat": ""
         }
-        
-        # LangGraph'a özgü recursion limit! (Döngü limiti 5'ten 15'e çıktı, graph kendi yönetir)
+
         config = {"recursion_limit": 15}
         sonuc_state = self.graph.invoke(baslangic_durumu, config)
-        
+
         son_mesaj = sonuc_state["messages"][-1]["content"]
-        
+
+        # Bu turda çalışan araçların kısa özetini çıkar (tam OBSERVATION metnini DEĞİL)
+        yeni_mesajlar = sonuc_state["messages"][len(self.supervisor.mesaj_gecmisi):]
+        arac_ozetleri = []
+        for msg in yeni_mesajlar:
+            icerik = msg.get("content", "")
+            if msg.get("role") == "system" and "tool=" in icerik:
+                tool_ad = re.search(r"tool=(\w+)", icerik)
+                basari = re.search(r"success=(\w+)", icerik)
+                if tool_ad:
+                    arac_ozetleri.append(f"{tool_ad.group(1)}({basari.group(1) if basari else '?'})")
+
+        if arac_ozetleri:
+            ozet = f"[TUR NOTU: Az önce şu araçlar çalıştı → {', '.join(arac_ozetleri)}. Aynı isteği tekrar sorulursa yeniden çalıştırma, zaten yapıldı.]"
+            self.supervisor.mesaj_gecmisi.append({"role": "system", "content": ozet})
+
         self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": son_mesaj})
-        
+
         model_name = "Qwen 480B (Mühendis Kodluyor...)" if "[DOSYA_YAZ:" in son_mesaj else "GPT-OSS 120B (Yönetici)"
-        
+
         return son_mesaj, model_name
 
     def __call__(self, user_input):
