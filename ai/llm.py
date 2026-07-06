@@ -3,6 +3,7 @@ import os
 import requests
 import platform
 import operator
+from handler.patterns import PATTERNS
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 
@@ -11,6 +12,7 @@ class GhostState(TypedDict):
     messages: Annotated[list, operator.add]
     son_istenen_dosya: str
     son_talimat: str
+    calisan_araclar: Annotated[list, operator.add]  
 
 class BaseLLM:
     def generate(self, prompt):
@@ -94,12 +96,11 @@ class ChatLLM(BaseLLM):
         2. ÖNCELİK (Tarayıcı ve Görsel Gözlem): Tarayıcı/Ekran araçlarını SADECE kendi API'nle çözemediğin spesifik UI işlemlerinde kullan.
         - Örnek: "Trendyol'dan ayakkabı fiyatlarına bak", "Ekranda şu an ne yazıyor oku" veya "Şu sitedeki butona tıkla" gibi doğrudan arayüz etkileşimi gereken durumlarda [GOZLEM_YAP: ...] kullan.
         
-        [ÖLÜMCÜL KURAL - DÖNGÜ YASAĞI]
-        AYNI aracı, AYNI parametrelerle üst üste İKİ KEZ ASLA KULLANMA!
-        - Eğer [ARAMA] aracı sana "Hata" veya "Bulunamadı" diyorsa, ASLA tekrar arama yapma. Yenilgiyi kabul et ve Patron'a "Arama motoru API'si hata veriyor, internete çıkamıyorum" de.
-        - Eğer [GOZLEM_YAP] ile sayfaya bakıp aradığın butonu/kutuyu bulamadıysan, inat edip tekrar [GOZLEM_YAP] ÇAĞIRMA. İşlemi iptal et ve Patron'a "Sitede aradığım butonu bulamadım" de.
-        - Aynı aracı ikinci kez kullanınca bunu döngü olarak görüp seni atan bir mekanizmam var o yüzden tekrar deneme ilk seferde yapmaya çalış olmazsa tekrar etiket geçme!
-        - Senden istenilen iş bittiğinde GÖREVİ TAMAMLA etiketini çağır ve sonucu ekrana bas.
+        [DÖNGÜ KORUMASI - SADECE GERÇEK TEKRARLARDA GEÇERLİ]
+        Bu kural SADECE aynı görev içinde, bir aracı TAM OLARAK AYNI parametrelerle art arda tekrar denediğinde geçerli. Farklı bir şarkı, farklı bir arama sorgusu, ya da Patron'un yeni bir isteği için daha önce kullandığın bir aracı tekrar kullanmak tamamen normal ve serbest — bunu döngü sanma.
+        - Bir araç "Hata" veya "Bulunamadı" derse, aynı parametreyle hemen tekrar deneme; Patron'a durumu açıkla, istersen alternatif öner.
+        - [GOZLEM_YAP] ile aradığın öğeyi bulamadıysan, aynı sayfada aynı şeyi tekrar arama; sonucu Patron'a bildir.
+        - İşin bittiğinde [GOREV_BITTI: <özet_veya_nihai_cevap>] etiketini kullan.
         
         [KOD YAZMA KURALLARI - KESİN VE DEĞİŞMEZ KURAL!]
         Sen bir YÖNETİCİSİN (Supervisor). Kodu SEN YAZMAYACAKSIN. 
@@ -119,7 +120,14 @@ class ChatLLM(BaseLLM):
         
         # Command handler'ın ve kendi hafızasının sorunsuz çalışması için mesaj geçmişi başlatılır
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
-        
+
+    def load_history(self, gecmis_mesajlar: list):
+        """Bir oturuma geçiş yapıldığında geçmiş mesajları yükler."""
+        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+        for msg in gecmis_mesajlar:
+            role = "assistant" if msg.get("role") == "assistant" else "user"
+            self.mesaj_gecmisi.append({"role": role, "content": msg.get("content", "")})
+
     def _raw_call(self, messages=None) -> str:
         payload = {
             "model": self.model,
@@ -224,7 +232,25 @@ class GhostController:
                 "son_istenen_dosya": dosya,
                 "son_talimat": talimat
             }
+        
+        def _arac_imzasi_cikar( mesaj: str) -> str | None:
+            """Mesajdaki ilk araç etiketini bulup 'anahtar::parametreler' imzası döndürür.
+            GOREV_BITTI bir 'araç' değil, tekrar takibine dahil edilmez."""
+            for anahtar, desen in PATTERNS.items():
+                if anahtar == "gorev_bitti":
+                    continue  # bitiş etiketi loop koruması kapsamı dışında
 
+                eslesme = desen.search(mesaj)
+                if eslesme:
+                    # tek grup (çoğu araç) ya da çoklu grup (tarayici_tikla, tarayici_yaz, dosya_yaz) fark etmeksizin
+                    # tüm grupları birleştirip normalize ediyoruz
+                    parametreler = "|".join(
+                        (g or "").strip().lower() for g in eslesme.groups()
+                    )
+                    return f"{anahtar}::{parametreler}"
+
+            return None
+        
         def coder_node(state: GhostState):
             dosya_yolu = self.yol_duzelt(state["son_istenen_dosya"])
             talimat = state["son_talimat"]
@@ -247,23 +273,22 @@ class GhostController:
         # YENİ DÜĞÜM: Araçları Graph İçinde Çalıştıran Merkez
         def tools_node(state: GhostState):
             son_mesaj = state["messages"][-1]["content"]
-            
-            if self.tool_runner:
-                # Command handler'daki regex motorunu çağır
-                sonuc = self.tool_runner(son_mesaj)
-                
-                if sonuc:
-                    if "GÖREV_TAMAMLANDI_SİNYALİ:" in sonuc:
-                        # Görev bittiyse Patron'a verilecek cevabı state'e yaz
-                        match = re.search(r'GÖREV_TAMAMLANDI_SİNYALİ:\s*(.*)', sonuc, re.DOTALL)
-                        final_cevap = match.group(1).strip() if match else "Görev tamamlandı."
-                        return {"messages": [{"role": "system", "content": f"[SİSTEM BİLDİRİMİ]\nGörev başarıyla bitti. Kullanıcıya şu cevabı ver: {final_cevap}"}]}
-                    else:
-                        # Araç çalıştıysa sonucunu sisteme bildir
-                        return {"messages": [{"role": "system", "content": f"[SİSTEM BİLDİRİMİ - ARAÇ ÇIKTISI]\n{sonuc}\nŞimdi bu sonuca göre düşün ve sıradaki adımı at."}]}
-            
-            # Eğer tool bulunamazsa veya fail olursa kördüğüme girmemesi için
-            return {"messages": [{"role": "system", "content": "[SİSTEM UYARISI] Araç çalıştırılamadı veya etiket hatalı."}]}
+            calisan_araclar = state.get("calisan_araclar", [])
+
+            # Bu turda çağrılmak istenen aracın "imzasını" çıkar (araç adı + normalize edilmiş parametre)
+            imza = _arac_imzasi_cikar(son_mesaj)   # örn: "ŞARKI_AÇ::don't stop me now - queen"
+
+            if imza and imza in calisan_araclar:
+                # Kod seviyesinde ENGELLE, gerçek API'ye hiç gitme
+                gozlem = (f"[SİSTEM UYARI]: '{imza}' bu görevde zaten denendi ve aynı sonucu (hata) verecek. "
+                        f"TEKRAR ÇAĞIRMA. Patron'a durumu açıkla ve [GOREV_BITTI: ...] ile bitir.")
+                return {"messages": [{"role": "system", "content": gozlem}]}
+
+            gozlem = self.tool_runner(son_mesaj)
+            return {
+                "messages": [{"role": "system", "content": gozlem}],
+                "calisan_araclar": [imza] if imza else []
+            }
 
         # YENİ YÖNLENDİRİCİ: Çok daha akıllı bir karar mekanizması
         def yonlendirici(state: GhostState):
@@ -306,27 +331,12 @@ class GhostController:
 
         son_mesaj = sonuc_state["messages"][-1]["content"]
 
-        # Bu turda çalışan araçların kısa özetini çıkar (tam OBSERVATION metnini DEĞİL)
-        yeni_mesajlar = sonuc_state["messages"][len(self.supervisor.mesaj_gecmisi):]
-        arac_ozetleri = []
-        for msg in yeni_mesajlar:
-            icerik = msg.get("content", "")
-            if msg.get("role") == "system" and "tool=" in icerik:
-                tool_ad = re.search(r"tool=(\w+)", icerik)
-                basari = re.search(r"success=(\w+)", icerik)
-                if tool_ad:
-                    arac_ozetleri.append(f"{tool_ad.group(1)}({basari.group(1) if basari else '?'})")
-
-        if arac_ozetleri:
-            ozet = f"[TUR NOTU: Az önce şu araçlar çalıştı → {', '.join(arac_ozetleri)}. Aynı isteği tekrar sorulursa yeniden çalıştırma, zaten yapıldı.]"
-            self.supervisor.mesaj_gecmisi.append({"role": "system", "content": ozet})
-
+        # Ghost'un nihai kararını hafızasına ekliyoruz
         self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": son_mesaj})
 
         model_name = "Qwen 480B (Mühendis Kodluyor...)" if "[DOSYA_YAZ:" in son_mesaj else "GPT-OSS 120B (Yönetici)"
 
         return son_mesaj, model_name
-
     def __call__(self, user_input):
         self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
         cevap, model = self._raw_supervisor_call()

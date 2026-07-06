@@ -7,9 +7,10 @@ import os
 import re
 import sys
 import time
+import queue
+import spotipy
 import traceback
 import threading
-import queue
 import subprocess   
 import PIL.ImageGrab
 
@@ -250,7 +251,7 @@ class CommandHandler:
 
         bulunan_araclar.sort(key=lambda x: x["baslangic_indeksi"])
 
-        MAX_TOOL = 2
+        MAX_TOOL = 5
         bulunan_araclar = bulunan_araclar[:MAX_TOOL]
 
         sonuclar = []
@@ -544,20 +545,32 @@ class CommandHandler:
 
     def _tool_play_song(self, song: str) -> str:
         self.app.log(f"SİSTEM: Spotify'da '{song}' aranıyor...", "green")
+        
         try:
             result = self.spotify.play_specific_song(song)
             return f"Spotify Sonucu: {result}"
-        except Exception as e:
-            if any(k in str(e).lower() for k in ["device", "active", "not found"]):
+        
+        except spotipy.exceptions.SpotifyException as e:
+            if "No active device" in str(e) or getattr(e, "http_status", None) == 404:
+                self.app.log("SİSTEM: Aktif cihaz yok, Spotify açılıp uyandırılıyor...", "yellow")
+                self._tool_open_app("spotify")     # senin önerdiğin: kendi açsın
+                time.sleep(2)                       # uygulamanın cihaz olarak görünmesi için bekle
+        
                 try:
-                    self.spotify.play_playlist("mesela yanii")
-                    time.sleep(2)
-                    self.spotify.play_specific_song(song)
-                    return f"Cihaz uyandırıldı ve '{song}' açıldı."
+                    device_id = self.spotify.wake_active_device()
+        
+                    if not device_id:
+                        return "HATA: Spotify açıldı ama hâlâ aktif cihaz yok. Patron'a Spotify'da bir şeye tıklamasını söyle. TEKRAR DENEME."
+                    time.sleep(1.5)
+                    result = self.spotify.play_specific_song(song)
+        
+                    return f"Spotify Sonucu (cihaz uyandırıldıktan sonra): {result}"
+        
                 except Exception as e2:
-                    return f"Cihaz uyandırılamadı: {e2}"
-            return f"Spotify Hatası: {e}"
-
+                    return f"HATA: Cihaz uyandırılamadı: {e2}. TEKRAR DENEME, Patron'a bildir."
+        
+            return f"HATA: Spotify hatası: {e}. TEKRAR DENEME."
+        
     def _tool_play_playlist(self, playlist: str) -> str:
         self.app.log(f"SİSTEM: '{playlist}' listesi aranıyor...", "green")
         result = self.spotify.play_playlist(playlist)

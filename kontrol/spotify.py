@@ -39,7 +39,8 @@ class SpotifyManager:
             # 1. Önce aktif cihazları bul
             devices = self.sp.devices()
             if not devices['devices']:
-                return "Patron, açık bir Spotify bulamadım. Uygulamayı açıp arkada hazır bekletir misin?"
+                # Düz metin dönmek yerine, uyandırma sistemini tetiklemek için manuel Spotify hatası fırlatıyoruz!
+                raise spotipy.exceptions.SpotifyException(404, -1, "No active device")
             
             # Cihaz ID'sini belirle (Eğer aktif cihaz yoksa listedeki ilk cihazı seçer)
             device_id = None
@@ -65,12 +66,22 @@ class SpotifyManager:
             artist_name = tracks[0]['artists'][0]['name']
 
             # 3. Şarkıyı çal
-            self.sp.start_playback(uris=[track_uri])
-            return f"BAŞARILI: '{artist_name} - {track_name}' şarkısı Spotify'da çalmaya başladı. İŞLEM TAMAMLANDI. Lütfen bir daha [ŞARKI_AÇ] aracını ÇAĞIRMA. Eğer elinde önceki adımlardan kalan bilgiler (örn: Arama sonuçları) varsa, onları da toparlayarak KESİNLİKLE [GOREV_BITTI: <nihai_cevap>] etiketini kullan."
-            
+            self.sp.start_playback(device_id=device_id, uris=[track_uri])
+            return f"BAŞARILI: '{artist_name} - {track_name}' şarkısı Spotify'da çalmaya başladı. KESİNLİKLE sadece [GOREV_BITTI: Patron, {artist_name} - {track_name} şarkısını açtım.] diyerek işlemi sonlandır."            
+        
         except spotipy.exceptions.SpotifyException as e:
-            # Hata yakalama (Cihaz aktif değilse veya Premium yoksa genelde bura patlar)
-            return f"Şarkı açılamadı. Spotify arka planda açık mı kontrol et patron. Detay: {e}"
+            if e.http_status == 404 or "No active device" in str(e):
+                raise   # command_handler yakalasın ve cihazı uyandırsın
+            
+            return f"Şarkı açılamadı. Detay: {e}"
+        
+    def wake_active_device(self):
+        devices = self.sp.devices()
+        if not devices['devices']:
+            return None
+        device_id = devices['devices'][0]['id']
+        self.sp.transfer_playback(device_id=device_id, force_play=False)
+        return device_id
 
     def play_playlist(self, playlist_name):
         """Kullanıcının kendi kütüphanesindeki bir çalma listesini bulup açar."""
