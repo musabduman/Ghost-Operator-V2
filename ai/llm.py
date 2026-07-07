@@ -85,7 +85,8 @@ class ChatLLM(BaseLLM):
         1. Eğer Patron senden AÇIKÇA yeni bir araç/tool eklemeni isterse derhal [KOD_ISTE] etiketiyle aracı üret.
         2. KONTROLLÜ İNİSİYATİF: Patron senden teknik bir işlem (örn: sistem RAM'ini oku, anlık döviz çek, ekran parlaklığını kıs) istediğinde; eğer mevcut araçlarınla ve DuckDuckGo aramasıyla bunu ÇÖZEMİYORSAN, ASLA "Bunu yapamam" deme! İnisiyatif al ve sorunu çözecek yeni bir aracı otonom olarak üretmek için [KOD_ISTE] kullan.
         3. DİKKAT: Sadece arama yaparak bulunabilecek basit bilgiler (örn: Hava durumu, maç skoru, vikipedi bilgisi) için DURDUK YERE KOD YAZMA. Sadece API bağlantısı, sistem kontrolü veya sürekli kullanılacak teknik bir altyapı gerekiyorsa inisiyatif al.
-        4. Yeni aracın dosya yolunu DAİMA "tool/<mantikli_arac_adi>.py" olarak belirle. Qwen'e kodu yazdırırken, sonucun terminale net bir şekilde "print" edilmesini emret.
+        4. DOSYA YOLU KURALI (ÖLÜMCÜL): Yeni aracı yazdırırken KESİNLİKLE ama KESİNLİKLE "tool/<arac_adi>.py" şeklinde klasör adıyla tam yol ver. Asla sadece "arac_adi.py" deme! Qwen'e kodu yazdırırken, sonucun terminale net bir şekilde "print" edilmesini emret.
+        5. YENİ TOOL ekledikten sonra toolu çalıştır demişse unutmadan çalıştırıp cevabını ver. 
 
         [ÇOKLU GÖREV VE BİRLEŞTİRME KURALI]
         Eğer kullanıcı senden tek bir mesajda iki farklı şey isterse (Örn: "Arama yap ve sonra şarkı aç"), araçları SIRAYLA tek tek kullan. İki araç işlemi de bittiğinde, araçlardan dönen sonuçları (örneğin arama verisi) asla unutma ve KESİNLİKLE tek bir [GOREV_BITTI: <cevap>] etiketi altında harmanlayarak Patron'a sun
@@ -112,8 +113,8 @@ class ChatLLM(BaseLLM):
         Arka planda senin emrinde çalışan ve sadece kod yazmakla görevli olan "İşçi Yapay Zeka" modelleri var. 
         Eğer Kullanıcı (Patron) yeni bir dosya oluşturmanı, kod yazmanı veya var olan bir kodu güncellemeni isterse, işi bu işçilere devretmek ZORUNDASIN.
         
-        Bunun için işçilere şu formatta bir sinyal göndermelisin:
-        [KOD_ISTE: <tam_dosya_yolu> | <işçiye_verilecek_türkçe_talimat>]
+        Bunun için işçilere şu formatta bir sinyal göndermelisin (Aşağıdaki isimler örnektir, kendi mantığına göre araca isim ver):
+        [KOD_ISTE: tool/yeni_arac_adi.py | İşçiye verilecek net ve detaylı kod yazma talimatı]
         
         DOSYA KURALLARI:
             Şu anki aktif İşletim Sistemi: {self.os_name}
@@ -123,7 +124,7 @@ class ChatLLM(BaseLLM):
         Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
         
-        tool_klasoru = "tools" # Kendi dizin yapına göre gerekirse tam yolu (os.path.join...) yazabilirsin.
+        tool_klasoru = os.path.join(os.getcwd(), "tools") # Kendi dizin yapına göre gerekirse tam yolu (os.path.join...) yazabilirsin.
         if os.path.exists(tool_klasoru):
             scriptler = [dosya for dosya in os.listdir(tool_klasoru) if dosya.endswith(".py")]
             if scriptler:
@@ -330,7 +331,7 @@ class GhostController:
         workflow.add_edge("tools", "supervisor") 
         
         # Kod yazıldıktan sonra doğrudan Patron'a gösterilmesi için döngüyü bitir
-        workflow.add_edge("coder", END) 
+        workflow.add_edge("coder", "tools") 
         
         return workflow.compile()
 
