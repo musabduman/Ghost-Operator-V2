@@ -327,16 +327,32 @@ class GhostController:
         }
 
         config = {"recursion_limit": 15}
+        
+        # 1. Döngüden önceki geçmiş mesaj sayısını hafızaya al
+        onceki_mesaj_sayisi = len(self.supervisor.mesaj_gecmisi)
+        
         sonuc_state = self.graph.invoke(baslangic_durumu, config)
 
+        # 2. Döngü boyunca Ghost'un ürettiği TÜM yeni mesajları yakala
+        yeni_mesajlar = sonuc_state["messages"][onceki_mesaj_sayisi:]
+        
+        # 3. Modelin tüm çıktılarını (araç etiketleri + GOREV_BITTI) tek bir hafıza bloğunda birleştir
+        birlestirilmis_hafiza = ""
+        for msg in yeni_mesajlar:
+            if msg.get("role") == "assistant":
+                birlestirilmis_hafiza += msg.get("content", "") + "\n"
+        
+        birlestirilmis_hafiza = birlestirilmis_hafiza.strip()
+
+        # 4. Ghost'un kalıcı geçmişine sadece bu birleştirilmiş bloğu ekle
+        self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": birlestirilmis_hafiza})
+
+        # UI için yine son mesajı çekiyoruz (Arayüzde tool logları görünmeyecek)
         son_mesaj = sonuc_state["messages"][-1]["content"]
-
-        # Ghost'un nihai kararını hafızasına ekliyoruz
-        self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": son_mesaj})
-
         model_name = "Qwen 480B (Mühendis Kodluyor...)" if "[DOSYA_YAZ:" in son_mesaj else "GPT-OSS 120B (Yönetici)"
 
-        return son_mesaj, model_name
+        return son_mesaj, model_name    
+    
     def __call__(self, user_input):
         self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
         cevap, model = self._raw_supervisor_call()
