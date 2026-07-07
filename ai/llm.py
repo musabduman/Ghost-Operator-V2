@@ -81,6 +81,11 @@ class ChatLLM(BaseLLM):
         ⚠️ Her adımda SADECE BİR etiket kullan. Birden fazla etiket aynı anda yazma.
         ADIM 5 → Bilgiyi elde ettikten, sorunun cevabını bulduktan veya sayfayı okuduktan sonra KESİNLİKLE başka bir tarayıcı aracı çağırma. Doğrudan [GOREV_BITTI: <özet_veya_nihai_cevap>] etiketini kullanarak süreci sonlandır.
         
+        [YETENEK EKSİKLİĞİ VE OTOMATİK ARAÇ (TOOL) ÜRETİMİ - KRİTİK]
+        1. Eğer Patron senden AÇIKÇA yeni bir araç/tool eklemeni isterse derhal [KOD_ISTE] etiketiyle aracı üret.
+        2. KONTROLLÜ İNİSİYATİF: Patron senden teknik bir işlem (örn: sistem RAM'ini oku, anlık döviz çek, ekran parlaklığını kıs) istediğinde; eğer mevcut araçlarınla ve DuckDuckGo aramasıyla bunu ÇÖZEMİYORSAN, ASLA "Bunu yapamam" deme! İnisiyatif al ve sorunu çözecek yeni bir aracı otonom olarak üretmek için [KOD_ISTE] kullan.
+        3. DİKKAT: Sadece arama yaparak bulunabilecek basit bilgiler (örn: Hava durumu, maç skoru, vikipedi bilgisi) için DURDUK YERE KOD YAZMA. Sadece API bağlantısı, sistem kontrolü veya sürekli kullanılacak teknik bir altyapı gerekiyorsa inisiyatif al.
+        4. Yeni aracın dosya yolunu DAİMA "tool/<mantikli_arac_adi>.py" olarak belirle. Qwen'e kodu yazdırırken, sonucun terminale net bir şekilde "print" edilmesini emret.
 
         [ÇOKLU GÖREV VE BİRLEŞTİRME KURALI]
         Eğer kullanıcı senden tek bir mesajda iki farklı şey isterse (Örn: "Arama yap ve sonra şarkı aç"), araçları SIRAYLA tek tek kullan. İki araç işlemi de bittiğinde, araçlardan dönen sonuçları (örneğin arama verisi) asla unutma ve KESİNLİKLE tek bir [GOREV_BITTI: <cevap>] etiketi altında harmanlayarak Patron'a sun
@@ -117,6 +122,16 @@ class ChatLLM(BaseLLM):
         ⚠️ ÇOK ÖNEMLİ KURAL: KOD_ISTE etiketinin içine ASLA Python kodu veya Markdown (```) ekleme! 
         Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
+        
+        tool_klasoru = "tools" # Kendi dizin yapına göre gerekirse tam yolu (os.path.join...) yazabilirsin.
+        if os.path.exists(tool_klasoru):
+            scriptler = [dosya for dosya in os.listdir(tool_klasoru) if dosya.endswith(".py")]
+            if scriptler:
+                dinamik_araclar = "\n\n[OTONOM DİNAMİK ARAÇLAR]\nŞu an emrine amade hazır Python scriptleri (Mikroservisler) şunlardır:\n"
+                for script in scriptler:
+                    dinamik_araclar += f"- {script} -> Kullanmak için: [KODU_CALISTIR: {tool_klasoru}/{script}]\n"
+                
+                self.ana_kurallar += dinamik_araclar
         
         # Command handler'ın ve kendi hafızasının sorunsuz çalışması için mesaj geçmişi başlatılır
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
