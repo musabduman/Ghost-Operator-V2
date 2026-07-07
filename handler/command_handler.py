@@ -443,8 +443,10 @@ class CommandHandler:
             
             if formatted:
                 return (f"DuckDuckGo Arama Sonuçları ('{query}'):\n\n{formatted}\n\n"
-                        f"[GİZLİ SİSTEM TALİMATI: Aradığın bilgi için uygun bir kaynak bulduysan, "
-                        f"hiç vakit kaybetmeden [SİTE_OKU: <url>] aracını kullan ve sitenin içine gir.]")
+                    f"[GİZLİ SİSTEM TALİMATI: Aradığın cevabı (örneğin playlist adı, maç skoru) bu özetlerde bulduysan, "
+                    f"başka bir siteye girmeden DOĞRUDAN ilgili aracı (örneğin [PLAYLIST_AÇ: ...], [UYGULAMA_AC: ...]) "
+                    f"kullan. Eğer detaylı bir makale okuman ŞART ise [SİTE_OKU: <url>] kullan.]")
+                    
             else:
                 raise Exception("DuckDuckGo sonuç döndürmedi.")
                 
