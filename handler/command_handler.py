@@ -68,24 +68,29 @@ class CommandHandler:
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
         """Asistanın sesli yanıt vermesini ve mikrofonun GÜVENLİ ŞEKİLDE yeniden açılmasını sağlar."""
-        self.app.is_speaking = True  # Kendi sesini duymaması için kulakları kapatır
+        self.app.is_speaking = True  # Kendi sesini duymaması için kulakları KESİN olarak kapat
         
         if not getattr(self.app, "_expanded", True):
+            from ui.compact_ui import set_voice_state
             set_voice_state(self.app, "speaking", "Konuşuyorum...")
             
+        # Bu fonksiyon SADECE konuşma fiziksel olarak bittiğinde (konus.py tarafından) tetiklenecek
+        def konusma_bitti_callback():
+            self.app.is_speaking = False  # Kulakları güvenli şekilde geri aç
+            
+            # Eğer hala sesli moddaysak dinlemeyi yeniden başlat
+            if getattr(self.app, "voice_mode", False) and not getattr(self.app, "_expanded", True):
+                from ui.compact_ui import set_voice_state
+                set_voice_state(self.app, "listening", "Dinliyorum...")
+                # Son yankıların bitmesi için 300ms bekleyip mikrofonu tetikle
+                self.app.after(300, self.app.voice_handler.start_listening)
+
         try:
-            self.app.konus.speak(metin) # Asistan konuşur
+            # Callback'i (on_complete parametresini) speak fonksiyonuna gönderiyoruz
+            self.app.konus.speak(metin, on_complete=konusma_bitti_callback)
         except Exception as e:
             self.app.log(f"Ses motoru hatası: {e}", "red")
-        finally:
-            self.app.is_speaking = False  # Konuşma bitti, kulakları geri aç
-            
-            # Eğer hala sesli moddaysak sağır kalmamak için mikrofonu yeniden başlat
-            if self.app.voice_mode:
-                if not getattr(self.app, "_expanded", True):
-                    set_voice_state(self.app, "listening", "Dinliyorum...")
-                # Son yankıların bitmesi için 300ms bekleyip döngüyü sıfırlıyoruz
-                self.app.after(300, self.app.voice_handler.start_listening)
+            self.app.is_speaking = False  # Hata çıkarsa kilitli kalmasın diye açıyoruz
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
     def handle(self, event=None, voice_text=None):

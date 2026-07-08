@@ -108,11 +108,20 @@ class GhostOperatorUI(ctk.CTk):
         self._expanded = False
         self.voice_mode = True
         
-        # ---> YENİ EKLENEN: Arayüze geçtikten yarım saniye sonra dinlemeyi zorla başlat
+        # Arayüze geçtikten sonra dinlemeyi zorla başlat
         self.after(500, self.voice_handler.start_listening)
 
     def expand_mode(self):
         if not self._expanded:
+            # 1. Ses modunu ve mikrofon kilidini zorla kapat
+            self.voice_mode = False
+            self.voice_handler.is_listening = False
+            
+            # 2. Eğer Ghost o an konuşuyorsa sesini anında kes
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+                
+            # 3. Geniş arayüzü yükle
             self._load_expanded()
 
     # ── Oturum işlemleri ─────────────────────────────────────────────────────
