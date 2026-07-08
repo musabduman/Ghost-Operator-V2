@@ -72,6 +72,10 @@ class VoiceHandler:
                 self.app.log("🎙️ Dinleniyor...", "green")
 
                 while True:
+                    # ---> YENİ EKLENEN: Eğer geniş (yazılı) moda geçildiyse döngüyü hemen kır ve donanımı sal
+                    if not getattr(self.app, "voice_mode", False):
+                        break
+                    
                     data = q.get()
 
                     # KENDİ SESİNİ DUYMAMASI İÇİN KULAKLARI KAPAT
