@@ -121,7 +121,7 @@ class ChatLLM(BaseLLM):
             Bir dosya yolu belirtirken asla kullanıcı adını tahmin etme. Mevcut işletim sistemi ({self.os_name}) standartlarına uygun kısa yollar kullan.
             
         ⚠️ ÇOK ÖNEMLİ KURAL: KOD_ISTE etiketinin içine ASLA Python kodu veya Markdown (```) ekleme! 
-        Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi arka planda kodu senin yerine yazıp dosyaya kaydedecek.
+        Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi yapay zeka arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
         
         tool_klasoru = os.path.join(os.getcwd(), "tools") # Kendi dizin yapına göre gerekirse tam yolu (os.path.join...) yazabilirsin.
