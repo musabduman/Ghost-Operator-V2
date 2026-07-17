@@ -173,19 +173,16 @@ def build_voice(app) -> ctk.CTkFrame:
 
     return frame
 
-
 def set_voice_state(app, state: str, status_text: str = None):
-    if hasattr(app, "voice_orb"):
+    if hasattr(app, "voice_orb") and app.voice_orb.winfo_exists():
         app.voice_orb.set_state(state)
-        
-    # Mevcut kodda durum metnini ekranda göstermemek için kapatılmıştı[cite: 1]
-    # Tasarımı güçlendirmek için metin arayüzünü (status_label) tekrar aktif ettik.
-    if hasattr(app, "voice_status_label"):
+
+    if hasattr(app, "voice_status_label") and app.voice_status_label.winfo_exists():
         if state in STATE_TEXTS:
-            # İşleniyor ve dinleniyor modlarında metin renklerini eşleştiriyoruz
             color = STATE_COLORS.get(state, "#aaaaaa")
             app.voice_status_label.configure(text=STATE_TEXTS[state], text_color=color)
 
+
 def set_voice_level(app, level: float):
-    if hasattr(app, "voice_orb"):
+    if hasattr(app, "voice_orb") and app.voice_orb.winfo_exists():
         app.voice_orb.set_level(level)

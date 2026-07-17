@@ -76,6 +76,10 @@ class GhostOperatorUI(ctk.CTk):
     def _clear_main_frame(self):
         if hasattr(self, "main_frame") and self.main_frame.winfo_exists():
             self.main_frame.destroy()
+        # Artık geçersiz widget referanslarını da temizle
+        for attr in ("voice_orb", "voice_status_label"):
+            if hasattr(self, attr):
+                delattr(self, attr)
 
     def _load_compact(self):
         self._clear_main_frame()
