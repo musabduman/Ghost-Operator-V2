@@ -88,7 +88,7 @@ class VoiceHandler:
                         if len(audio_np) > 0:
                             rms = np.sqrt(np.mean(np.square(audio_np.astype(np.float32))))
                             rms_normalized = min(1.0, (rms / 32768.0) * 5.0)
-                            set_voice_level(self.app, rms_normalized)
+                            self.app.after(0, lambda v=rms_normalized: set_voice_level(self.app, v))
 
                     if rec.AcceptWaveform(data):
                         result = json.loads(rec.Result())

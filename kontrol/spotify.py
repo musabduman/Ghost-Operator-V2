@@ -32,48 +32,39 @@ class SpotifyManager:
         if track and track['is_playing']:
             return f"{track['item']['artists'][0]['name']} - {track['item']['name']}"
         return "Şu an müzik çalmıyor."
-    
+        
     def play_specific_song(self, song_name):
-        """İstenen şarkıyı aratır ve anında çalmaya başlar."""
         try:
-            # 1. Önce aktif cihazları bul
             devices = self.sp.devices()
             if not devices['devices']:
-                # Düz metin dönmek yerine, uyandırma sistemini tetiklemek için manuel Spotify hatası fırlatıyoruz!
                 raise spotipy.exceptions.SpotifyException(404, -1, "No active device")
-            
-            # Cihaz ID'sini belirle (Eğer aktif cihaz yoksa listedeki ilk cihazı seçer)
+
             device_id = None
             for d in devices['devices']:
                 if d['is_active']:
                     device_id = d['id']
                     break
-            
             if not device_id:
-                # Aktif işaretli cihaz yoksa bile listedeki ilk cihazı zorla kullan
                 device_id = devices['devices'][0]['id']
 
-            # 1. Spotify'da şarkıyı arat (Sadece track/şarkı arıyoruz)
             result = self.sp.search(q=song_name, type="track", limit=1)
             tracks = result['tracks']['items']
-            
             if not tracks:
                 return f"Patron, '{song_name}' diye bir şey bulamadım."
-            
-            # 2. Şarkının URI (Spotify ID) bilgisini al
+
             track_uri = tracks[0]['uri']
             track_name = tracks[0]['name']
             artist_name = tracks[0]['artists'][0]['name']
 
-            # 3. Şarkıyı çal
             self.sp.start_playback(device_id=device_id, uris=[track_uri])
-            return f"BAŞARILI: '{artist_name} - {track_name}' şarkısı Spotify'da çalmaya başladı. KESİNLİKLE sadece [GOREV_BITTI: Patron, {artist_name} - {track_name} şarkısını açtım.] diyerek işlemi sonlandır."            
-        
+            return f"BAŞARILI: '{artist_name} - {track_name}' çalmaya başladı. KESİNLİKLE sadece [GOREV_BITTI: ...] ile bitir."
+
         except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 404 or "No active device" in str(e):
-                raise   # command_handler yakalasın ve cihazı uyandırsın
-            
-            return f"Şarkı açılamadı. Detay: {e}"
+            if e.http_status == 404 or "No active device" in str(e) or "NO_ACTIVE_DEVICE" in str(e):
+                raise
+            # 404 dışı ama playback ile ilgili bir hata da genelde cihaz kaynaklıdır
+            raise spotipy.exceptions.SpotifyException(e.http_status, -1, f"DEVICE_ISSUE: {e}")
+        
         
     def wake_active_device(self):
         devices = self.sp.devices()

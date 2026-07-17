@@ -67,30 +67,24 @@ class CommandHandler:
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
-        """Asistanın sesli yanıt vermesini ve mikrofonun GÜVENLİ ŞEKİLDE yeniden açılmasını sağlar."""
-        self.app.is_speaking = True  # Kendi sesini duymaması için kulakları KESİN olarak kapat
-        
+        self.app.is_speaking = True
+
         if not getattr(self.app, "_expanded", True):
             from ui.compact_ui import set_voice_state
-            set_voice_state(self.app, "speaking", "Konuşuyorum...")
-            
-        # Bu fonksiyon SADECE konuşma fiziksel olarak bittiğinde (konus.py tarafından) tetiklenecek
+            self.app.after(0, lambda: set_voice_state(self.app, "speaking", "Konuşuyorum..."))
+
         def konusma_bitti_callback():
-            self.app.is_speaking = False  # Kulakları güvenli şekilde geri aç
-            
-            # Eğer hala sesli moddaysak dinlemeyi yeniden başlat
+            self.app.is_speaking = False
             if getattr(self.app, "voice_mode", False) and not getattr(self.app, "_expanded", True):
                 from ui.compact_ui import set_voice_state
-                set_voice_state(self.app, "listening", "Dinliyorum...")
-                # Son yankıların bitmesi için 300ms bekleyip mikrofonu tetikle
+                self.app.after(0, lambda: set_voice_state(self.app, "listening", "Dinliyorum..."))
                 self.app.after(300, self.app.voice_handler.start_listening)
 
         try:
-            # Callback'i (on_complete parametresini) speak fonksiyonuna gönderiyoruz
             self.app.konus.speak(metin, on_complete=konusma_bitti_callback)
         except Exception as e:
             self.app.log(f"Ses motoru hatası: {e}", "red")
-            self.app.is_speaking = False  # Hata çıkarsa kilitli kalmasın diye açıyoruz
+            self.app.is_speaking = False
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
     def handle(self, event=None, voice_text=None):
@@ -552,31 +546,33 @@ class CommandHandler:
 
     def _tool_play_song(self, song: str) -> str:
         self.app.log(f"SİSTEM: Spotify'da '{song}' aranıyor...", "green")
-        
         try:
             result = self.spotify.play_specific_song(song)
             return f"Spotify Sonucu: {result}"
-        
+
         except spotipy.exceptions.SpotifyException as e:
-            if "No active device" in str(e) or getattr(e, "http_status", None) == 404:
+            if "No active device" in str(e) or "DEVICE_ISSUE" in str(e) or getattr(e, "http_status", None) == 404:
                 self.app.log("SİSTEM: Aktif cihaz yok, Spotify açılıp uyandırılıyor...", "yellow")
-                self._tool_open_app("spotify")     # senin önerdiğin: kendi açsın
-                time.sleep(2)                       # uygulamanın cihaz olarak görünmesi için bekle
-        
+                self._tool_open_app("spotify")
+                time.sleep(2)
                 try:
                     device_id = self.spotify.wake_active_device()
-        
                     if not device_id:
-                        return "HATA: Spotify açıldı ama hâlâ aktif cihaz yok. Patron'a Spotify'da bir şeye tıklamasını söyle. TEKRAR DENEME."
+                        return ("HATA: Spotify'da hiç kayıtlı cihaz bulunamadı. "
+                                "[ÖLÜMCÜL SİSTEM TALİMATI: Bu bir CİHAZ sorunudur, şarkı adıyla ilgisi yok. "
+                                "BAŞKA BİR ŞARKI DENEME. Patron'a Spotify uygulamasını açıp bir şeye tıklamasını "
+                                "söyleyerek [GOREV_BITTI: ...] ile işlemi hemen sonlandır.]")
                     time.sleep(1.5)
                     result = self.spotify.play_specific_song(song)
-        
                     return f"Spotify Sonucu (cihaz uyandırıldıktan sonra): {result}"
-        
                 except Exception as e2:
-                    return f"HATA: Cihaz uyandırılamadı: {e2}. TEKRAR DENEME, Patron'a bildir."
-        
-            return f"HATA: Spotify hatası: {e}. TEKRAR DENEME."
+                    return (f"HATA: Cihaz uyandırılamadı: {e2}. "
+                            f"[ÖLÜMCÜL SİSTEM TALİMATI: Bu CİHAZ bağlantı sorunu, başka şarkı denemenin faydası yok. "
+                            f"[GOREV_BITTI: Patron, Spotify cihaz bağlantısında sorun var, uygulamayı kontrol eder misin?] kullan.]")
+
+            return (f"HATA: Spotify hatası: {e}. "
+                    f"[ÖLÜMCÜL SİSTEM TALİMATI: Başka bir şarkı deneme, sorun teknik. "
+                    f"[GOREV_BITTI: Patron, Spotify'da teknik bir sorun oluştu.] kullan.]")
         
     def _tool_play_playlist(self, playlist: str) -> str:
         self.app.log(f"SİSTEM: '{playlist}' listesi aranıyor...", "green")
