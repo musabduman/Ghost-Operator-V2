@@ -1,167 +1,310 @@
-import re
-import os   
-import requests
+import os
+import json
 import platform
 import operator
-from handler.patterns import PATTERNS
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
+import requests
 
 # 1. ORTAK BİLİNÇ (State)
 class GhostState(TypedDict):
     messages: Annotated[list, operator.add]
     son_istenen_dosya: str
     son_talimat: str
-    calisan_araclar: Annotated[list, operator.add]  
+    calisan_araclar: Annotated[list, operator.add]
+    tool_calls: list
+
+
+# ── JSON TOOL ŞEMASI (gpt-oss native tool calling) ──────────────────────────
+# Eskiden bu liste ana_kurallar'ın içinde [ETİKET: <param>] formatında
+# metin olarak yazılıyordu ve supervisor_node'un ürettiği ham metin regex'le
+# taranıyordu. gpt-oss (cloud dahil) native function calling destekliyor,
+# bu yüzden model artık "doğru formatta yazmayı hatırlamak" zorunda değil;
+# hangi tool'u ne zaman çağıracağını API seviyesinde, tool_calls olarak
+# structured döndürüyor.
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "arama",
+        "description": "İnternette genel bir bilgi aramak için kullan (haber, güncel olay, tanım, maç skoru, hava durumu vb).",
+        "parameters": {"type": "object", "properties": {
+            "sorgu": {"type": "string", "description": "Aranacak sorgu"}
+        }, "required": ["sorgu"]}
+    }},
+    {"type": "function", "function": {
+        "name": "klasor_ac",
+        "description": "Var olan bir klasörü dosya gezgininde açar.",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "Açılacak klasörün tam yolu"}
+        }, "required": ["yol"]}
+    }},
+    {"type": "function", "function": {
+        "name": "uygulama_ac",
+        "description": "Bir masaüstü uygulamasını başlatır (örn: code, chrome, spotify, discord).",
+        "parameters": {"type": "object", "properties": {
+            "isim": {"type": "string", "description": "Uygulamanın sistem kısa adı"}
+        }, "required": ["isim"]}
+    }},
+    {"type": "function", "function": {
+        "name": "sarki_ac",
+        "description": "Spotify'da belirli bir şarkıyı çalar. Müzik isteklerinde görsel/tarayıcı araçlarını DEĞİL, daima bunu kullan.",
+        "parameters": {"type": "object", "properties": {
+            "sarki": {"type": "string", "description": "Şarkı ve sanatçı adı"}
+        }, "required": ["sarki"]}
+    }},
+    {"type": "function", "function": {
+        "name": "playlist_ac",
+        "description": "Spotify'da bir çalma listesini başlatır.",
+        "parameters": {"type": "object", "properties": {
+            "liste": {"type": "string", "description": "Çalma listesi adı"}
+        }, "required": ["liste"]}
+    }},
+    {"type": "function", "function": {
+        "name": "not_al",
+        "description": "Kalıcı olarak hatırlanması gereken bir bilgiyi hafızaya kazır.",
+        "parameters": {"type": "object", "properties": {
+            "bilgi": {"type": "string", "description": "Hatırlanacak bilgi, 3. şahısla kısa özet"}
+        }, "required": ["bilgi"]}
+    }},
+    {"type": "function", "function": {
+        "name": "klasor_yap",
+        "description": "Yeni bir klasör oluşturur. İçine .py/.txt gibi dosya konacaksa BUNU KULLANMA, dosya_yaz zaten klasörü kendi oluşturur.",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "Oluşturulacak klasörün tam yolu"}
+        }, "required": ["yol"]}
+    }},
+    {"type": "function", "function": {
+        "name": "klasor_incele",
+        "description": "Bir klasörün içeriğini listeler (röntgen).",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "İncelenecek klasörün tam yolu"}
+        }, "required": ["yol"]}
+    }},
+    {"type": "function", "function": {
+        "name": "kodu_calistir",
+        "description": "Bir Python dosyasını çalıştırıp çıktısını veya hatasını döndürür. Ayrıca daha önce üretilmiş dinamik tool script'lerini çalıştırmak için de kullanılır.",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "Çalıştırılacak dosyanın tam yolu"}
+        }, "required": ["yol"]}
+    }},
+    {"type": "function", "function": {
+        "name": "dosya_oku",
+        "description": "Bir dosyanın içeriğini okur.",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "Okunacak dosyanın tam yolu"}
+        }, "required": ["yol"]}
+    }},
+    {"type": "function", "function": {
+        "name": "dosya_yaz",
+        "description": "Bir dosyaya içerik yazar (üzerine yazar veya oluşturur). Klasör yoksa otomatik oluşturur.",
+        "parameters": {"type": "object", "properties": {
+            "yol": {"type": "string", "description": "Yazılacak dosyanın tam yolu"},
+            "icerik": {"type": "string", "description": "Dosyaya yazılacak tam içerik"}
+        }, "required": ["yol", "icerik"]}
+    }},
+    {"type": "function", "function": {
+        "name": "gozlem_yap",
+        "description": (
+            "Bir web sayfasının veya masaüstünün buton/kutularını keşfeder. "
+            "Steam/Trendyol/Yemeksepeti gibi e-ticaret, vitrin veya liste "
+            "sayfalarında (ürün/fiyat varsa) site_oku YERİNE bunu kullan."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "hedef": {"type": "string", "description": "Tam URL veya 'masaustu'"}
+        }, "required": ["hedef"]}
+    }},
+    {"type": "function", "function": {
+        "name": "tarayici_tikla",
+        "description": "Belirtilen URL'de bir buton veya linke tıklar.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "Tam URL"},
+            "hedef": {"type": "string", "description": "Tıklanacak buton/link metni"}
+        }, "required": ["url", "hedef"]}
+    }},
+    {"type": "function", "function": {
+        "name": "tarayici_yaz",
+        "description": "Belirtilen URL'deki bir kutuya metin yazar.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "Tam URL"},
+            "kutu": {"type": "string", "description": "Kutunun adı veya placeholder'ı"},
+            "metin": {"type": "string", "description": "Yazılacak metin"}
+        }, "required": ["url", "kutu", "metin"]}
+    }},
+    {"type": "function", "function": {
+        "name": "site_oku",
+        "description": (
+            "Wikipedia, haber veya blog gibi uzun metinli sayfaların içeriğini okur. "
+            "Katalog/e-ticaret sayfaları için KULLANMA, onun yerine gozlem_yap kullan."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "Tam URL"}
+        }, "required": ["url"]}
+    }},
+    {"type": "function", "function": {
+        "name": "ekran_goruntusu",
+        "description": "Kullanıcının ekranına bakıp analiz eder (görsel gözlem / vizyon).",
+        "parameters": {"type": "object", "properties": {
+            "ne_arayacagim": {"type": "string", "description": "Ekranda nelere dikkat edileceği"}
+        }, "required": ["ne_arayacagim"]}
+    }},
+    {"type": "function", "function": {
+        "name": "kod_iste",
+        "description": (
+            "Yeni bir kod dosyası yazılmasını veya var olan bir dosyanın güncellenmesini "
+            "işçi modele (Qwen) devreder. Kodu SEN yazmazsın, bu aracı çağırırsın."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "dosya": {"type": "string", "description": "tool/ klasörü altında tam dosya yolu, örn: tool/hava_durumu.py"},
+            "talimat": {"type": "string", "description": "İşçiye verilecek net, doğal dilde kod yazma talimatı (Python kodu/markdown YAZMA)"}
+        }, "required": ["dosya", "talimat"]}
+    }},
+    {"type": "function", "function": {
+        "name": "gorev_bitti",
+        "description": (
+            "Aradığın bilgiye ulaştığında, işlemi tamamladığında veya sohbeti bitirdiğinde "
+            "döngüden çıkmak için KESİNLİKLE bunu çağır."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "ozet": {"type": "string", "description": "Patrona verilecek nihai cevap veya özet"}
+        }, "required": ["ozet"]}
+    }},
+]
+
 
 class BaseLLM:
     def generate(self, prompt):
         raise NotImplementedError
-    
+
     def __call__(self, user_input):
         return self.generate(user_input)
 
+
 # 1. YÖNETİCİ BEYİN
-class ChatLLM(BaseLLM):    
+class ChatLLM(BaseLLM):
     def __init__(self, api_key=None, model="gpt-oss:120b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
-        self.os_name = platform.system() 
-        
+        self.os_name = platform.system()
+
         self.ana_kurallar = rf"""
         [KİMLİK VE ROL]
         Senin adın Ghost. Kullanıcı (senin geliştiricin ve yaratıcın) tarafından kodlanmış otonom, zeki ve üst düzey bir masaüstü AI asistanısın. Bir "şirket botu" değilsin; Kullanıcı'ın yanındaki en güvendiği, "cool" sağ kolusun.
 
         [KARAKTER VE İLETİŞİM KURALLARI]
         1. Samimi, doğal ve özgüvenli ol. Aşırı resmi, robotik veya kasıntı kelimeler ASLA kullanma.
-        2. KESİN KELİME SINIRI: Kısa, net ve rahat konuş sanki kardeşinle konuşurmuşsun gibi. Yanıtların normalde 15-20 kelimeyi geçmemeye çalış kesin kural değil. REAKSİYON VE ÖZETLEME isteklerinde bu sınır muaftır, istenen bilgiyi eksiksiz ver. 
+        2. KESİN KELİME SINIRI: Kısa, net ve rahat konuş sanki kardeşinle konuşurmuşsun gibi. Yanıtların normalde 15-20 kelimeyi geçmemeye çalış kesin kural değil. REAKSİYON VE ÖZETLEME isteklerinde bu sınır muaftır, istenen bilgiyi eksiksiz ver.
         3. Ekranda veya kodda ne görüyorsan doğrudan söyle, bilgi saklama.
         4. Fiziksel işlemlerde "Açtım, hallettim" GİBİ KESİN İFADELER KULLANMA. Sistemi sen değil, arka plandaki arayüz yönetiyor. "Hallediyorum Patron", "Sinyali gönderdim", "Hemen bakıyoruz" gibi açık uçlu cevaplar ver.
         5. Senin en büyük başarın vazgeçmemek hata alsak bile bundan öğreniriz.
 
-        [SİSTEM KOMUTLARI VE EYLEM ETİKETLERİ]
-        Kullanıcı fiziksel bir eylem isterse, cevabının EN BAŞINA ilgili etiketi ekle. Sohbet ediyorsa etiket kullanma.
+        [ARAÇ ÇAĞIRMA KURALI]
+        Kullanıcı fiziksel bir eylem isterse veya güncel/bilmediğin bir bilgi soruyorsa, sana tanımlanan tool'lardan (fonksiyonlardan) uygun olanını çağır. Sohbet ediyorsan hiçbir tool çağırma, doğrudan cevap ver. Aradığın bilgiye ulaştığında veya işlemi bitirdiğinde KESİNLİKLE gorev_bitti tool'unu çağır — bu, döngüden çıkmanın TEK yolu.
 
         [BİLGİ EKSİKLİĞİ VE OTONOM ARAMA]
-        Eğer kullanıcı sana güncel bir bilgi, anlık bir olay (maç sonuçları, haberler, hava durumu vb.) sorarsa veya cevabı kendi veritabanında kesin olarak bilmiyorsan ASLA tahmin etme veya kafadan atma!
-        
-        • KLASÖR AÇMA: [OPEN_FOLDER: <tam_dosya_yolu>]
-        • UYGULAMA AÇMA: [OPEN_APP: <sistem_kısa_adı>] (Örn: code, chrome, spotify)
-        • İNTERNET ARAMASI: [ARAMA: <aranacak_sorgu>]
-        • ŞARKI/SANATÇI AÇ: [ŞARKI_AÇ: <şarkı_ve_sanatçı_adı>]
-        • PLAYLIST AÇ: [PLAYLIST_AÇ: <liste_adı>]
-        • HAFIZAYA KAZIMA: [NOT_AL: <hatırlanacak_bilgi>]
-        • KLASÖR OLUŞTURMA: [KLASOR_YAP: <tam_klasör_yolu>] (İçinde .py, .txt olanlar için KULLANMA!)
-        • DOSYA OKUMA: [DOSYA_OKU: <tam_dosya_yolu>]
-        • KLASÖR İNCELEME (RÖNTGEN): [KLASOR_INCELE: <tam_klasör_yolu>]
-        • EKRANA BAKMA (VİZYON): [EKRAN_GORUNTUSU: <ne_arayacagim>] (Kullanıcı "ekranıma bak", "bu resimde ne var", "burada ne yazıyor" derse veya bir sorunu çözmek için ekrana fiziksel olarak bakman gerekirse bunu kullan. Parametre olarak neye dikkat etmen gerektiğini yaz. Örn: [EKRAN_GORUNTUSU: Ekranda hata mesajı var mı?])
-        • KOD TEST ETME: [KODU_CALISTIR: <tam_dosya_yolu>]
-        • GOOGLE DA ARAMA YAPMA: [ARAMA: <en_mantıklı_arama_sorgusu>]
-        • EKRAN VEYA SİTE İNCELEME: [GOZLEM_YAP: <tam_url_veya_masaustu>] (Örn: [GOZLEM_YAP: https://trendyol.com] veya [GOZLEM_YAP: masaustu])
-        • WEB SİTESİNDE TIKLAMA: [TARAYICI_TIKLA: <tam_url> | <tıklanacak_buton_veya_link_metni>] (Örn: [TARAYICI_TIKLA: https://tr.wikipedia.org | Ara])
-        • WEB SİTESİNDE YAZMA: [TARAYICI_YAZ: <tam_url> | <kutu_adı_veya_placeholder> | <yazılacak_metin>] (Örn: [TARAYICI_YAZ: https://tr.wikipedia.org | Vikipedi'de ara | Yapay Zeka])
-        • WEB SİTESİ METNİNİ OKUMA: [SİTE_OKU: <tam_url>] (Wikipedia makaleleri, haberler veya blog yazılarındaki uzun metinleri/paragrafları okumak için BİRİNCİ ÖNCELİKLE bunu kullan)
-        • GÖREVİ TAMAMLA (ÇIKIŞ): [GOREV_BITTI: <patrona_verilecek_nihai_cevap_veya_özet>] (Aradığın bilgiye ulaştığında, işlemi bitirdiğinde veya özeti çıkardığında döngüden çıkmak için KESİNLİKLE bunu kullan!)
+        Eğer kullanıcı sana güncel bir bilgi, anlık bir olay (maç sonuçları, haberler, hava durumu vb.) sorarsa veya cevabı kendi veritabanında kesin olarak bilmiyorsan ASLA tahmin etme veya kafadan atma! arama tool'unu kullan.
 
         [POP-UP VE ENGEL AŞMA KURALI (SOKAK KURNAZLIĞI)]
         Eğer girdiğin bir sayfada makale veya ürün yerine "Yaş Doğrulama", "Çerezleri Kabul Et (Accept Cookies)" veya "18 Yaşından Büyük müsünüz?" gibi bir engel çıkarsa ASLA pes etme veya bunu kullanıcıya okuma!
         - Bu bir engeldir. İnisiyatif al!
-        - Hemen [TARAYICI_TIKLA] aracıyla "Kabul Et", "Sayfayı Görüntüle" veya "Evet" butonlarına tıkla. 
-        - Eğer yaş girmen gerekiyorsa [TARAYICI_YAZ] ile rastgele bir yetişkin yılı (örn: 1990) gir.
+        - Hemen tarayici_tikla aracıyla "Kabul Et", "Sayfayı Görüntüle" veya "Evet" butonlarına tıkla.
+        - Eğer yaş girmen gerekiyorsa tarayici_yaz ile rastgele bir yetişkin yılı (örn: 1990) gir.
         - Engeli aştıktan sonra asıl görevine (okumaya veya gözlemlemeye) devam et.
 
         [TARAYICI AKIŞ KURALI - KESİN]
         Bir web sitesinde işlem yapman gerektiğinde şu sırayı takip et:
-        ADIM 1 → Önce [GOZLEM_YAP: <url>] ile sayfanın buton ve kutularını keşfet.
-        ADIM 2 → Gözlem sonucuna göre [TARAYICI_YAZ: <tam_url> | <kutu_adı> | <metin>] ile yazı yaz.
+        ADIM 1 → Önce gozlem_yap ile sayfanın buton ve kutularını keşfet.
+        ADIM 2 → Gözlem sonucuna göre tarayici_yaz ile yazı yaz.
         ADIM 3 (SAYFA TİPİNE GÖRE ARAÇ SEÇİMİ - ÇOK ÖNEMLİ!) → Hedef sayfaya ulaştığında sayfanın türüne göre şu iki araçtan birini seç:
-        - A) KÜTÜPHANE/MAKALE: Eğer girdiğin sayfa Wikipedia, Haber veya Blog gibi uzun metinli bir sayfaysa doğrudan [SİTE_OKU: <url>] kullan.
-        - B) MAĞAZA/KATALOG: Eğer girdiğin sayfa Steam, Trendyol, Yemeksepeti gibi bir E-ticaret, vitrin veya Liste sayfasıysa (ürünler ve fiyatlar varsa) ASLA SİTE_OKU KULLANMA. Makale okuyucu katalogları okuyamaz. Bunun yerine [GOZLEM_YAP: <url>] aracını çağır; böylece Playwright sayfadaki ürün isimlerini (linkleri/butonları) senin için çeker.
-        ADIM 4 → Eğer girdiğin sayfada uzun bir makale, yazı veya bilgi okuman gerekiyorsa [SİTE_OKU: <url>] aracını kullan ve metni çek.
-        ⚠️ Her adımda SADECE BİR etiket kullan. Birden fazla etiket aynı anda yazma.
-        ADIM 5 → Bilgiyi elde ettikten, sorunun cevabını bulduktan veya sayfayı okuduktan sonra KESİNLİKLE başka bir tarayıcı aracı çağırma. Doğrudan [GOREV_BITTI: <özet_veya_nihai_cevap>] etiketini kullanarak süreci sonlandır.
-        
+        - A) KÜTÜPHANE/MAKALE: Eğer girdiğin sayfa Wikipedia, Haber veya Blog gibi uzun metinli bir sayfaysa doğrudan site_oku kullan.
+        - B) MAĞAZA/KATALOG: Eğer girdiğin sayfa Steam, Trendyol, Yemeksepeti gibi bir E-ticaret, vitrin veya Liste sayfasıysa (ürünler ve fiyatlar varsa) ASLA site_oku KULLANMA. Bunun yerine gozlem_yap aracını çağır.
+        ADIM 4 → Eğer girdiğin sayfada uzun bir makale, yazı veya bilgi okuman gerekiyorsa site_oku aracını kullan ve metni çek.
+        ⚠️ Her adımda SADECE BİR tool çağır. Aynı turda birden fazla tool çağırma.
+        ADIM 5 → Bilgiyi elde ettikten, sorunun cevabını bulduktan veya sayfayı okuduktan sonra KESİNLİKLE başka bir tarayıcı aracı çağırma. Doğrudan gorev_bitti tool'unu çağırarak süreci sonlandır.
+
         [YETENEK EKSİKLİĞİ VE OTOMATİK ARAÇ (TOOL) ÜRETİMİ - KRİTİK]
-        1. Eğer Patron senden AÇIKÇA yeni bir araç/tool eklemeni isterse derhal [KOD_ISTE] etiketiyle aracı üret.
-        2. KONTROLLÜ İNİSİYATİF: Patron senden teknik bir işlem (örn: sistem RAM'ini oku, anlık döviz çek, ekran parlaklığını kıs) istediğinde; eğer mevcut araçlarınla ve DuckDuckGo aramasıyla bunu ÇÖZEMİYORSAN, ASLA "Bunu yapamam" deme! İnisiyatif al ve sorunu çözecek yeni bir aracı otonom olarak üretmek için [KOD_ISTE] kullan.
+        1. Eğer Patron senden AÇIKÇA yeni bir araç/tool eklemeni isterse derhal kod_iste tool'unu çağır.
+        2. KONTROLLÜ İNİSİYATİF: Patron senden teknik bir işlem (örn: sistem RAM'ini oku, anlık döviz çek, ekran parlaklığını kıs) istediğinde; eğer mevcut araçlarınla ve arama ile bunu ÇÖZEMİYORSAN, ASLA "Bunu yapamam" deme! İnisiyatif al ve sorunu çözecek yeni bir aracı otonom olarak üretmek için kod_iste kullan.
         3. DİKKAT: Sadece arama yaparak bulunabilecek basit bilgiler (örn: Hava durumu, maç skoru, vikipedi bilgisi) için DURDUK YERE KOD YAZMA. Sadece API bağlantısı, sistem kontrolü veya sürekli kullanılacak teknik bir altyapı gerekiyorsa inisiyatif al.
-        4. DOSYA YOLU KURALI (ÖLÜMCÜL): Yeni aracı yazdırırken KESİNLİKLE ama KESİNLİKLE "tool/<arac_adi>.py" şeklinde klasör adıyla tam yol ver. Asla sadece "arac_adi.py" deme! Qwen'e kodu yazdırırken, sonucun terminale net bir şekilde "print" edilmesini emret.
-        5. YENİ TOOL ekledikten sonra toolu çalıştır demişse unutmadan çalıştırıp cevabını ver. 
+        4. DOSYA YOLU KURALI (ÖLÜMCÜL): kod_iste'nin dosya parametresinde KESİNLİKLE ama KESİNLİKLE "tool/<arac_adi>.py" şeklinde klasör adıyla tam yol ver. Asla sadece "arac_adi.py" deme! talimat parametresinde Qwen'e, sonucun terminale net bir şekilde "print" edilmesini emret.
+        5. YENİ TOOL ekledikten sonra çalıştırmasını istemişse unutmadan kodu_calistir ile çalıştırıp cevabını ver.
+        6. kod_iste'nin talimat parametresine ASLA Python kodu veya Markdown (```) ekleme! Sen koda dokunma, sadece işçiye ne yapması gerektiğini doğal dille tarif et.
 
         [ÇOKLU GÖREV VE BİRLEŞTİRME KURALI]
-        Eğer kullanıcı senden tek bir mesajda iki farklı şey isterse (Örn: "Arama yap ve sonra şarkı aç"), araçları SIRAYLA tek tek kullan. İki araç işlemi de bittiğinde, araçlardan dönen sonuçları (örneğin arama verisi) asla unutma ve KESİNLİKLE tek bir [GOREV_BITTI: <cevap>] etiketi altında harmanlayarak Patron'a sun
+        Eğer kullanıcı senden tek bir mesajda iki farklı şey isterse (Örn: "Arama yap ve sonra şarkı aç"), araçları SIRAYLA tek tek çağır. İki araç işlemi de bittiğinde, araçlardan dönen sonuçları asla unutma ve KESİNLİKLE tek bir gorev_bitti çağrısı altında harmanlayarak Patron'a sun.
 
         [ARAÇ SEÇİMİ HİYERARŞİSİ VE KESİN KURALLAR]
         Eğer bir işlem için birden fazla araç uygun görünüyorsa, aşağıdaki hiyerarşiyi KESİNLİKLE takip et:
 
-        1. ÖNCELİK (API ve İşletim Sistemi): Kendi içindeki yerel sistem komutları her zaman ilk tercihindir. 
-        - Bir uygulama açılacaksa DAİMA [UYGULAMA_AC: ...] kullan.
-        - Müzik veya playlist çalınacaksa DAİMA [ŞARKI_AÇ: ...] veya [PLAYLIST_AÇ: ...] kullan. Görsel olarak ekranda tıklamaya veya tarayıcıya girmeye ÇALIŞMA.
-        - İnternette genel bir bilgi aranacaksa DAİMA [ARAMA: ...] kullan.
+        1. ÖNCELİK (API ve İşletim Sistemi): Kendi içindeki yerel sistem komutları her zaman ilk tercihindir.
+        - Bir uygulama açılacaksa DAİMA uygulama_ac kullan.
+        - Müzik veya playlist çalınacaksa DAİMA sarki_ac veya playlist_ac kullan. Görsel olarak ekranda tıklamaya veya tarayıcıya girmeye ÇALIŞMA.
+        - İnternette genel bir bilgi aranacaksa DAİMA arama kullan.
 
         2. ÖNCELİK (Tarayıcı ve Görsel Gözlem): Tarayıcı/Ekran araçlarını SADECE kendi API'nle çözemediğin spesifik UI işlemlerinde kullan.
-        - Örnek: "Trendyol'dan ayakkabı fiyatlarına bak", "Ekranda şu an ne yazıyor oku" veya "Şu sitedeki butona tıkla" gibi doğrudan arayüz etkileşimi gereken durumlarda [GOZLEM_YAP: ...] kullan.
-        
+        - Örnek: "Trendyol'dan ayakkabı fiyatlarına bak", "Ekranda şu an ne yazıyor oku" veya "Şu sitedeki butona tıkla" gibi doğrudan arayüz etkileşimi gereken durumlarda gozlem_yap kullan.
+
         [DÖNGÜ KORUMASI - SADECE GERÇEK TEKRARLARDA GEÇERLİ]
         Bu kural SADECE aynı görev içinde, bir aracı TAM OLARAK AYNI parametrelerle art arda tekrar denediğinde geçerli. Farklı bir şarkı, farklı bir arama sorgusu, ya da Patron'un yeni bir isteği için daha önce kullandığın bir aracı tekrar kullanmak tamamen normal ve serbest — bunu döngü sanma.
         - Bir araç "Hata" veya "Bulunamadı" derse, aynı parametreyle hemen tekrar deneme; Patron'a durumu açıkla, istersen alternatif öner.
-        - [GOZLEM_YAP] ile aradığın öğeyi bulamadıysan, aynı sayfada aynı şeyi tekrar arama; sonucu Patron'a bildir.
-        - İşin bittiğinde [GOREV_BITTI: <özet_veya_nihai_cevap>] etiketini kullan.
-        
+        - gozlem_yap ile aradığın öğeyi bulamadıysan, aynı sayfada aynı şeyi tekrar arama; sonucu Patron'a bildir.
+        - İşin bittiğinde gorev_bitti tool'unu çağır.
+
         [KOD YAZMA KURALLARI - KESİN VE DEĞİŞMEZ KURAL!]
-        Sen bir YÖNETİCİSİN (Supervisor). Kodu SEN YAZMAYACAKSIN. 
-        Arka planda senin emrinde çalışan ve sadece kod yazmakla görevli olan "İşçi Yapay Zeka" modelleri var. 
-        Eğer Kullanıcı (Patron) yeni bir dosya oluşturmanı, kod yazmanı veya var olan bir kodu güncellemeni isterse, işi bu işçilere devretmek ZORUNDASIN.
-        
-        Bunun için işçilere şu formatta bir sinyal göndermelisin (Aşağıdaki isimler örnektir, kendi mantığına göre araca isim ver):
-        [KOD_ISTE: tool/yeni_arac_adi.py | İşçiye verilecek net ve detaylı kod yazma talimatı]
-        
+        Sen bir YÖNETİCİSİN (Supervisor). Kodu SEN YAZMAYACAKSIN.
+        Arka planda senin emrinde çalışan ve sadece kod yazmakla görevli olan "İşçi Yapay Zeka" modelleri var.
+        Eğer Kullanıcı (Patron) yeni bir dosya oluşturmanı, kod yazmanı veya var olan bir kodu güncellemeni isterse, işi kod_iste tool'unu çağırarak bu işçilere devretmek ZORUNDASIN.
+
         DOSYA KURALLARI:
             Şu anki aktif İşletim Sistemi: {self.os_name}
             Bir dosya yolu belirtirken asla kullanıcı adını tahmin etme. Mevcut işletim sistemi ({self.os_name}) standartlarına uygun kısa yollar kullan.
-            
-        ⚠️ ÇOK ÖNEMLİ KURAL: KOD_ISTE etiketinin içine ASLA Python kodu veya Markdown (```) ekleme! 
-        Sen koda dokunma. Sen sadece işçiye ne yapması gerektiğini tarif et. İşçi yapay zeka arka planda kodu senin yerine yazıp dosyaya kaydedecek.
         """
-        
-        tool_klasoru = os.path.join(os.getcwd(), "tools") # Kendi dizin yapına göre gerekirse tam yolu (os.path.join...) yazabilirsin.
+
+        tool_klasoru = os.path.join(os.getcwd(), "tools")
         if os.path.exists(tool_klasoru):
             scriptler = [dosya for dosya in os.listdir(tool_klasoru) if dosya.endswith(".py")]
             if scriptler:
                 dinamik_araclar = "\n\n[OTONOM DİNAMİK ARAÇLAR]\nŞu an emrine amade hazır Python scriptleri (Mikroservisler) şunlardır:\n"
                 for script in scriptler:
-                    dinamik_araclar += f"- {script} -> Kullanmak için: [KODU_CALISTIR: {tool_klasoru}/{script}]\n"
-                
+                    dinamik_araclar += f"- {script} -> Kullanmak için kodu_calistir tool'unu şu yolla çağır: {tool_klasoru}/{script}\n"
+
                 self.ana_kurallar += dinamik_araclar
-        
-        # Command handler'ın ve kendi hafızasının sorunsuz çalışması için mesaj geçmişi başlatılır
+
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
 
     def load_history(self, gecmis_mesajlar: list):
         """Bir oturuma geçiş yapıldığında geçmiş mesajları yükler."""
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
         for msg in gecmis_mesajlar:
-            role = "assistant" if msg.get("role") == "assistant" else "user"
-            self.mesaj_gecmisi.append({"role": role, "content": msg.get("content", "")})
+            role = msg.get("role") if msg.get("role") in ("assistant", "tool", "user") else "user"
+            temiz_msg = {"role": role, "content": msg.get("content", "")}
+            if msg.get("tool_calls"):
+                temiz_msg["tool_calls"] = msg["tool_calls"]
+            self.mesaj_gecmisi.append(temiz_msg)
 
-    def _raw_call(self, messages=None) -> str:
+    def _raw_call(self, messages=None, tools=None) -> dict:
+        """Artık ham metin değil, Ollama'nın döndürdüğü TAM message objesini
+        döndürür (content + tool_calls + varsa thinking). Regex ile bu objenin
+        içinden niyet çıkarmaya gerek yok, tool_calls zaten yapılandırılmış."""
         payload = {
             "model": self.model,
             "messages": messages if messages is not None else self.mesaj_gecmisi,
             "stream": False,
             "options": {"temperature": 0.7, "num_ctx": 4096}
         }
+        if tools:
+            payload["tools"] = tools
+
         response = requests.post(self.api_url, json=payload, timeout=90)
         response.raise_for_status()
-        return response.json()["message"]["content"].strip()
-        
-# 2. İŞÇİ BEYİN
+        return response.json()["message"]
+
+
+# 2. İŞÇİ BEYİN (değişmedi — Qwen zaten tool calling kullanmıyor, saf kod üretiyor)
 class QwenWorker:
     def __init__(self, model="qwen3-coder:480b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.os_name = platform.system()
-        
+
         self.isci_kurallari = f"""
         [KİMLİK VE GÖREV]
         Sen dilsiz, görünmez ve yüksek performanslı bir kodlama motorusun. Bir yapay zeka asistanı veya sohbet botu DEĞİLSİN. Asla sohbet etmezsin, selamlama yapmazsın, açıklama sunmazsın.
@@ -185,7 +328,7 @@ class QwenWorker:
         istek = f"TALİMAT: {talimat}\n\n"
         if mevcut_kod:
             istek += f"MEVCUT KOD:\n{mevcut_kod}\n\nBunu talimata göre düzelt ve saf kodu ver."
-            
+
         payload = {
             "model": self.model,
             "messages": [
@@ -197,30 +340,33 @@ class QwenWorker:
         }
         try:
             response = requests.post(self.api_url, json=payload, timeout=90)
-            response.raise_for_status() 
+            response.raise_for_status()
             saf_kod = response.json()["message"]["content"].strip()
-            
+
+            import re
             saf_kod = re.sub(r"^```[\w]*\n?", "", saf_kod)
             saf_kod = re.sub(r"\n?```$", "", saf_kod).strip()
-                
+
             return saf_kod
         except Exception as e:
             raise Exception(f"Taşeron (Qwen) Çöktü: {e}")
 
+
 # 3. ORKESTRA ŞEFİ
 class GhostController:
-    # EKLENTİ 1: tool_runner parametresi eklendi
-    def __init__(self, tool_runner=None): 
-        self.supervisor = ChatLLM(model="gpt-oss:120b-cloud") 
+    def __init__(self, tool_runner=None):
+        # tool_runner artık ham metin değil, (isim: str, args: dict) alan bir
+        # fonksiyon olmalı. command_handler.py tarafında _execute_tool_call.
+        self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
         self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
-        self.tool_runner = tool_runner 
-        
+        self.tool_runner = tool_runner
+
         self.graph = self._build_graph()
-    
+
     def yol_duzelt(self, yol):
         user_home = os.path.expanduser("~")
         if platform.system() == "Windows":
-            yol = os.path.normpath(yol.replace("/", "\\")) 
+            yol = os.path.normpath(yol.replace("/", "\\"))
             if "Users\\" in yol:
                 parcalar = yol.split("\\")
                 if len(parcalar) > 3:
@@ -237,40 +383,54 @@ class GhostController:
         workflow = StateGraph(GhostState)
 
         def supervisor_node(state: GhostState):
-            response = self.supervisor._raw_call(state["messages"])
-            
-            kod_eslesme = re.search(r'\[KOD_ISTE:\s*(.*?)\s*\|\s*(.*?)\]', response, re.DOTALL | re.IGNORECASE)
-            dosya = kod_eslesme.group(1).strip() if kod_eslesme else ""
-            talimat = kod_eslesme.group(2).strip() if kod_eslesme else ""
-            
+            msg = self.supervisor._raw_call(state["messages"], tools=TOOLS)
+            tool_calls = msg.get("tool_calls") or []
+
+            dosya, talimat = "", ""
+            if tool_calls and tool_calls[0]["function"]["name"] == "kod_iste":
+                args = tool_calls[0]["function"]["arguments"]
+                dosya = args.get("dosya", "")
+                talimat = args.get("talimat", "")
+
             return {
-                "messages": [{"role": "assistant", "content": response}],
+                "messages": [msg],
+                "tool_calls": tool_calls,
                 "son_istenen_dosya": dosya,
-                "son_talimat": talimat
+                "son_talimat": talimat,
             }
-        
-        def _arac_imzasi_cikar( mesaj: str) -> str | None:
-            """Mesajdaki ilk araç etiketini bulup 'anahtar::parametreler' imzası döndürür.
-            GOREV_BITTI bir 'araç' değil, tekrar takibine dahil edilmez."""
-            for anahtar, desen in PATTERNS.items():
-                if anahtar == "gorev_bitti":
-                    continue  # bitiş etiketi loop koruması kapsamı dışında
 
-                eslesme = desen.search(mesaj)
-                if eslesme:
-                    # tek grup (çoğu araç) ya da çoklu grup (tarayici_tikla, tarayici_yaz, dosya_yaz) fark etmeksizin
-                    # tüm grupları birleştirip normalize ediyoruz
-                    parametreler = "|".join(
-                        (g or "").strip().lower() for g in eslesme.groups()
-                    )
-                    return f"{anahtar}::{parametreler}"
+        def tools_node(state: GhostState):
+            tool_calls = state.get("tool_calls") or []
+            if not tool_calls:
+                return {"messages": []}
 
-            return None
-        
+            call = tool_calls[0]
+            isim = call["function"]["name"]
+            args = call["function"]["arguments"]
+            calisan_araclar = state.get("calisan_araclar", [])
+
+            # İmza artık regex ile metinden çıkarılmıyor; tool_call zaten
+            # yapılandırılmış (isim + args dict), doğrudan JSON'a çeviriyoruz.
+            imza = f"{isim}::{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
+
+            if imza in calisan_araclar:
+                gozlem = (
+                    f"Bu araç ('{isim}') bu görevde aynı parametrelerle zaten denendi ve "
+                    f"muhtemelen aynı sonucu (hata) verecek. TEKRAR ÇAĞIRMA. "
+                    f"Patron'a durumu açıkla ve gorev_bitti ile bitir."
+                )
+                return {"messages": [{"role": "tool", "content": gozlem}]}
+
+            gozlem = self.tool_runner(isim, args)
+            return {
+                "messages": [{"role": "tool", "content": gozlem}],
+                "calisan_araclar": [imza],
+            }
+
         def coder_node(state: GhostState):
             dosya_yolu = self.yol_duzelt(state["son_istenen_dosya"])
             talimat = state["son_talimat"]
-            
+
             mevcut_kod = ""
             if os.path.exists(dosya_yolu):
                 try:
@@ -278,97 +438,89 @@ class GhostController:
                         mevcut_kod = f.read()
                 except Exception:
                     pass
-                    
+
             try:
                 saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod)
-                ui_formati = f"[DOSYA_YAZ: {dosya_yolu}]\n<<<KOD_BASLANGIC>>>\n{saf_kod}\n<<<KOD_BITIS>>>"
-                return {"messages": [{"role": "assistant", "content": ui_formati}]}
+                # Eskiden [DOSYA_YAZ: ...] tag'i olarak paketlenip tools_node'a
+                # gönderiliyordu ki regex onu yakalasın. Artık dosya_yaz tool'unu
+                # doğrudan çağırıyoruz, ara paketleme adımına gerek yok.
+                yazma_sonucu = self.tool_runner("dosya_yaz", {"yol": dosya_yolu, "icerik": saf_kod})
+                return {"messages": [{"role": "tool", "content": f"Kod işçisi (Qwen) dosyayı yazdı. {yazma_sonucu}"}]}
             except Exception as e:
-                return {"messages": [{"role": "assistant", "content": f"[SİSTEM HATA] Taşeron çöktü: {e}"}]}
+                return {"messages": [{"role": "tool", "content": f"[SİSTEM HATA] Taşeron çöktü: {e}"}]}
 
-        # YENİ DÜĞÜM: Araçları Graph İçinde Çalıştıran Merkez
-        def tools_node(state: GhostState):
-            son_mesaj = state["messages"][-1]["content"]
-            calisan_araclar = state.get("calisan_araclar", [])
-
-            # Bu turda çağrılmak istenen aracın "imzasını" çıkar (araç adı + normalize edilmiş parametre)
-            imza = _arac_imzasi_cikar(son_mesaj)   # örn: "ŞARKI_AÇ::don't stop me now - queen"
-
-            if imza and imza in calisan_araclar:
-                # Kod seviyesinde ENGELLE, gerçek API'ye hiç gitme
-                gozlem = (f"[SİSTEM UYARI]: '{imza}' bu görevde zaten denendi ve aynı sonucu (hata) verecek. "
-                        f"TEKRAR ÇAĞIRMA. Patron'a durumu açıkla ve [GOREV_BITTI: ...] ile bitir.")
-                return {"messages": [{"role": "system", "content": gozlem}]}
-
-            gozlem = self.tool_runner(son_mesaj)
-            return {
-                "messages": [{"role": "system", "content": gozlem}],
-                "calisan_araclar": [imza] if imza else []
-            }
-
-        # YENİ YÖNLENDİRİCİ: Çok daha akıllı bir karar mekanizması
         def yonlendirici(state: GhostState):
-            son_mesaj = state["messages"][-1]["content"]
-            
-            if "[KOD_ISTE" in son_mesaj:
+            tool_calls = state.get("tool_calls") or []
+            if not tool_calls:
+                # Model tool çağırmadan düz metin cevap verdi (sohbet durumu)
+                return END
+            isim = tool_calls[0]["function"]["name"]
+            if isim == "kod_iste":
                 return "coder"
-            elif "[GOREV_BITTI" in son_mesaj:
+            if isim == "gorev_bitti":
                 return END
-            # GOREV_BITTI veya KOD_ISTE dışındaki diğer tüm [ETİKET] kullanımlarında tools node'a git
-            elif re.search(r'\[[A-ZÇĞİÖŞÜ_]+:.*?\]', son_mesaj): 
-                return "tools"
-            else:
-                return END
+            return "tools"
 
         workflow.add_node("supervisor", supervisor_node)
         workflow.add_node("coder", coder_node)
-        workflow.add_node("tools", tools_node) # Araç düğümünü ağa ekledik
-        
+        workflow.add_node("tools", tools_node)
+
         workflow.set_entry_point("supervisor")
         workflow.add_conditional_edges("supervisor", yonlendirici)
-        
-        # MÜKEMMEL DÖNGÜ: Araç çalıştıktan sonra sonuçla birlikte Yöneticiye geri döner!
-        workflow.add_edge("tools", "supervisor") 
-        
-        # Kod yazıldıktan sonra doğrudan Patron'a gösterilmesi için döngüyü bitir
-        workflow.add_edge("coder", "tools") 
-        
+
+        # Araç veya coder çalıştıktan sonra sonuçla birlikte Yöneticiye geri dön
+        workflow.add_edge("tools", "supervisor")
+        workflow.add_edge("coder", "supervisor")
+
         return workflow.compile()
 
     def _raw_supervisor_call(self) -> tuple[str, str]:
         baslangic_durumu = {
             "messages": self.supervisor.mesaj_gecmisi,
             "son_istenen_dosya": "",
-            "son_talimat": ""
+            "son_talimat": "",
+            "calisan_araclar": [],
+            "tool_calls": [],
         }
 
         config = {"recursion_limit": 15}
-        
-        # 1. Döngüden önceki geçmiş mesaj sayısını hafızaya al
+
         onceki_mesaj_sayisi = len(self.supervisor.mesaj_gecmisi)
-        
         sonuc_state = self.graph.invoke(baslangic_durumu, config)
-
-        # 2. Döngü boyunca Ghost'un ürettiği TÜM yeni mesajları yakala
         yeni_mesajlar = sonuc_state["messages"][onceki_mesaj_sayisi:]
-        
-        # 3. Modelin tüm çıktılarını (araç etiketleri + GOREV_BITTI) tek bir hafıza bloğunda birleştir
-        birlestirilmis_hafiza = ""
-        for msg in yeni_mesajlar:
-            if msg.get("role") == "assistant":
-                birlestirilmis_hafiza += msg.get("content", "") + "\n"
-        
-        birlestirilmis_hafiza = birlestirilmis_hafiza.strip()
 
-        # 4. Ghost'un kalıcı geçmişine sadece bu birleştirilmiş bloğu ekle
-        self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": birlestirilmis_hafiza})
+        # UI etiketi için: bu turda kod_iste çağrıldı mı?
+        kod_yazildi_mi = any(
+            m.get("role") == "assistant"
+            and any(tc["function"]["name"] == "kod_iste" for tc in (m.get("tool_calls") or []))
+            for m in yeni_mesajlar
+        )
 
-        # UI için yine son mesajı çekiyoruz (Arayüzde tool logları görünmeyecek)
-        son_mesaj = sonuc_state["messages"][-1]["content"]
-        model_name = "Qwen 480B (Mühendis Kodluyor...)" if "[DOSYA_YAZ:" in son_mesaj else "GPT-OSS 120B (Yönetici)"
+        # Nihai cevap artık serbest metinden regex ile temizlenmiyor;
+        # gorev_bitti tool_call'ının 'ozet' argümanından doğrudan okunuyor.
+        nihai_cevap = ""
+        for m in yeni_mesajlar:
+            if m.get("role") != "assistant":
+                continue
+            tool_calls = m.get("tool_calls") or []
+            for tc in tool_calls:
+                if tc["function"]["name"] == "gorev_bitti":
+                    nihai_cevap = tc["function"]["arguments"].get("ozet", "")
+            if not tool_calls and m.get("content"):
+                # Model hiç tool çağırmadan düz cevap verdiyse (sohbet durumu)
+                nihai_cevap = m["content"]
 
-        return son_mesaj, model_name    
-    
+        # Kalıcı geçmişe bu turun TÜM mesajlarını (tool çağrıları + sonuçları
+        # dahil) yapılandırılmış haliyle ekliyoruz. Eskiden tüm assistant
+        # mesajları tek bir string'de eritilip öyle ekleniyordu; bu hem
+        # modelin bir turda birden fazla etiket yazmasını normalleştiriyordu
+        # hem de tool sonuçlarını kalıcı geçmişten tamamen siliyordu.
+        self.supervisor.mesaj_gecmisi.extend(yeni_mesajlar)
+
+        model_name = "Qwen 480B (Mühendis Kodladı)" if kod_yazildi_mi else "GPT-OSS 120B (Yönetici)"
+
+        return nihai_cevap.strip() if nihai_cevap else "...", model_name
+
     def __call__(self, user_input):
         self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
         cevap, model = self._raw_supervisor_call()
