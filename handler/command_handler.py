@@ -14,7 +14,6 @@ import threading
 import subprocess   
 import PIL.ImageGrab
 
-from handler.patterns import PATTERNS
 from hafıza.rag_hafıza import Bellek
 from core.planner import PlannerAgent
 from kontrol.spotify import SpotifyManager
@@ -39,30 +38,32 @@ class CommandHandler:
         self.app = app
         self.son_komut_sesli = False
         self.bellek = Bellek()
-        self.controller = GhostController(tool_runner=self._araclari_calistir)        
+        self.controller = GhostController(tool_runner=self._execute_tool_call)        
         self.spotify = SpotifyManager()
         self.planner = PlannerAgent()
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
         
-        self.TOOL_REGISTRY = {
-            "arama": {"func": self._tool_search, "yol_coz": False, "param_count": 1},
-            "klasor_ac": {"func": self._tool_open_folder, "yol_coz": True, "param_count": 1},
-            "uygulama_ac": {"func": self._tool_open_app, "yol_coz": False, "param_count": 1},
-            "sarki_ac": {"func": self._tool_play_song, "yol_coz": False, "param_count": 1},
-            "playlist_ac": {"func": self._tool_play_playlist, "yol_coz": False, "param_count": 1},
-            "not_al": {"func": self._tool_save_note, "yol_coz": False, "param_count": 1},
-            "klasor_yap": {"func": self._tool_make_folder, "yol_coz": True, "param_count": 1},
-            "klasor_incele": {"func": self._tool_inspect_folder, "yol_coz": True, "param_count": 1},
-            "kodu_calistir": {"func": self._tool_run_code, "yol_coz": True, "param_count": 1},
-            "dosya_oku": {"func": self._tool_read_file, "yol_coz": True, "param_count": 1},
-            "dosya_yaz": {"func": self._tool_write_file, "yol_coz": True, "param_count": 2},
-            "gozlem_yap": {"func": self._tool_browser_observe, "yol_coz": False, "param_count": 1},
-            "tarayici_tikla": {"func": self._tool_browser_click, "yol_coz": False, "param_count": 2},
-            "tarayici_yaz": {"func": self._tool_browser_type, "yol_coz": False, "param_count": 3},
-            "site_oku": {"func": self._tool_read_website, "yol_coz": False, "param_count": 1},
-            "gorev_bitti": {"func": self._tool_mission_complete, "yol_coz": False, "param_count": 1},
-            "ekran_goruntusu": {"func": self._tool_take_screenshot, "yol_coz": False, "param_count": 1},
+        # llm.py'deki TOOLS (JSON schema) ile isim ve argüman adı eşleşecek
+        # şekilde kurulmuş harita. _execute_tool_call bunu kullanıyor.
+        # Değer: (fonksiyon, sırayla_pozisyonel_arg_adlari, yol_cozulecek_arg_adlari)
+        self.TOOL_ARG_MAP = {
+            "arama":            (self._tool_search,          ["sorgu"],              []),
+            "klasor_ac":        (self._tool_open_folder,     ["yol"],                ["yol"]),
+            "uygulama_ac":      (self._tool_open_app,        ["isim"],               []),
+            "sarki_ac":         (self._tool_play_song,       ["sarki"],              []),
+            "playlist_ac":      (self._tool_play_playlist,   ["liste"],              []),
+            "not_al":           (self._tool_save_note,       ["bilgi"],              []),
+            "klasor_yap":       (self._tool_make_folder,     ["yol"],                ["yol"]),
+            "klasor_incele":    (self._tool_inspect_folder,  ["yol"],                ["yol"]),
+            "kodu_calistir":    (self._tool_run_code,        ["yol"],                ["yol"]),
+            "dosya_oku":        (self._tool_read_file,       ["yol"],                ["yol"]),
+            "dosya_yaz":        (self._tool_write_file,      ["yol", "icerik"],      ["yol"]),
+            "gozlem_yap":       (self._tool_browser_observe, ["hedef"],              []),
+            "tarayici_tikla":   (self._tool_browser_click,   ["url", "hedef"],       []),
+            "tarayici_yaz":     (self._tool_browser_type,    ["url", "kutu", "metin"], []),
+            "site_oku":         (self._tool_read_website,    ["url"],                []),
+            "ekran_goruntusu":  (self._tool_take_screenshot, ["ne_arayacagim"],      []),
         }
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
@@ -212,18 +213,15 @@ class CommandHandler:
             cevap, model = self.controller._raw_supervisor_call()
             self._update_model_label(model)
             
-            # İşçinin veya Yöneticinin nihai cevabını temizle
-            final_mesaji = self._clean_response_for_display(cevap)
+            # cevap artık gorev_bitti tool_call'ının 'ozet' argümanından geliyor,
+            # zaten temiz metin — regex ile tag temizlemeye gerek kalmadı.
+            final_mesaji = cevap.strip() if cevap else ""
             
             if final_mesaji:
                 self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
                     self._asistan_konus(final_mesaji)
                     
-            # Geriye dönük uyumluluk: Eğer çıktı içinde kod dosyası varsa _araclari_calistir onu yakalayıp kaydetsin
-            if "[DOSYA_YAZ:" in cevap:
-                self._araclari_calistir(cevap)
-                
         except Exception as e:
             self.app.log(f"SİSTEM: LangGraph Döngüsü Kırıldı: {e}", "red")
             hata_mesaji = "Patron, işlem sırasında bir hata oluştu."
@@ -231,63 +229,35 @@ class CommandHandler:
             if self.app.voice_mode:
                 self._asistan_konus(hata_mesaji)
 
-    def _araclari_calistir(self, response: str) -> str | None:
-        bulunan_araclar = []
+    def _execute_tool_call(self, isim: str, args: dict) -> str:
+        """llm.py'nin tools_node'u tarafından çağrılır. Artık ham metin
+        parse etmiyoruz; isim ve args zaten Ollama'nın tool_calls'ından
+        gelen yapılandırılmış veri."""
+        if isim not in self.TOOL_ARG_MAP:
+            return f"Bilinmeyen araç: {isim}"
 
-        for pattern_adi, regex in PATTERNS.items():
-            if pattern_adi not in self.TOOL_REGISTRY:
-                continue
-            
-            for match in regex.finditer(response):
-                bulunan_araclar.append({
-                    "isim": pattern_adi,
-                    "match": match,
-                    "baslangic_indeksi": match.start()
-                })
+        func, arg_adlari, yol_coz_alanlari = self.TOOL_ARG_MAP[isim]
 
-        if not bulunan_araclar:
-            return None
+        try:
+            cagri_parametreleri = []
+            for arg_adi in arg_adlari:
+                deger = args.get(arg_adi, "")
+                if arg_adi in yol_coz_alanlari:
+                    deger = akilli_yol_cozucu(deger)
+                cagri_parametreleri.append(deger)
 
-        bulunan_araclar.sort(key=lambda x: x["baslangic_indeksi"])
+            result = func(*cagri_parametreleri)
+            success = True
+        except Exception as e:
+            result = f"Araç çalışırken çöktü: {str(e)}"
+            success = False
+            self.app.log(f"SİSTEM HATA DETAYI ({isim}):\n{traceback.format_exc()}", "red")
 
-        MAX_TOOL = 5
-        bulunan_araclar = bulunan_araclar[:MAX_TOOL]
+        self.app.log(f"🛠️ ARAÇ: {isim.upper()} | DURUM: {'✅' if success else '❌'}", "yellow")
+        self.app.log(f"   Param: {args} | Çıktı: {str(result)[:80]}...", "yellow")
 
-        sonuclar = []
-        
-        for adim, arac in enumerate(bulunan_araclar):
-            pattern_adi = arac["isim"]
-            m = arac["match"]
-            ayar = self.TOOL_REGISTRY[pattern_adi]
-            
-            parametreler = []
-            for i in range(1, ayar["param_count"] + 1):
-                param = m.group(i).strip()
-                if i == 1 and ayar["yol_coz"]: 
-                    param = akilli_yol_cozucu(param)
-                parametreler.append(param)
+        return f"tool={isim}\nsuccess={str(success).lower()}\nresult={result}"
 
-            try:
-                result = ayar["func"](*parametreler)
-                success = True
-            except Exception as e:
-                result = f"Araç çalışırken çöktü: {str(e)}"
-                success = False
-                self.app.log(f"SİSTEM HATA DETAYI ({pattern_adi}):\n{traceback.format_exc()}", "red")
-
-            self.app.log(f"🛠️ [ADIM {adim+1}/{len(bulunan_araclar)}] ARAÇ: {pattern_adi.upper()} | DURUM: {'✅' if success else '❌'}", "yellow")
-            self.app.log(f"   Param: {parametreler} | Çıktı: {str(result)[:50]}...", "yellow")
-
-            sonuclar.append(
-                f"OBSERVATION [Adım {adim+1}]:\n"
-                f"tool={pattern_adi}\n"
-                f"success={str(success).lower()}\n"
-                f"result={result}\n"
-                f"{'-'*20}"
-            )
-
-        return "\n".join(sonuclar)
-    
     def _enrich_with_memory(self, user_input: str) -> str:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
             return user_input
@@ -626,4 +596,4 @@ class CommandHandler:
             files = ", ".join(os.listdir(folder)) or "Klasör boş."
             return f"Hedeflenen dosya bulunamadı. Klasörün içindeki mevcut dosyalar: {files}"
             
-        return "Dosya veya dizin tamamen geçersiz."
+        return "Dosya veya dizin tamamen geçersiz." 
