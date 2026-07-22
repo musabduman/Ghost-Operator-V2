@@ -53,3 +53,33 @@ class Bellek:
         except Exception as e:
             print(f"[SİSTEM UYARISI] Bellek sorgusu başarısız: {e}")
             return []
+
+    def benzerini_bul(self, metin, esik=0.15):
+        """Yazmadan önce aynı/çok benzer bir kaydın olup olmadığını kontrol
+        eder. Chroma'nın döndürdüğü mesafeye (distance) bakar — küçük mesafe
+        büyük benzerlik demektir. Koleksiyon boşsa veya hiçbir kayıt eşiğin
+        altında değilse None döner.
+
+        esik: varsayılan 0.15 kaba bir başlangıç değeri — Chroma'nın hangi
+        mesafe metriğini (L2/cosine) kullandığına göre gerçek "benzer"
+        sınırı değişir. İlk birkaç gerçek yazımdan sonra konsoldaki mesafe
+        değerlerini gözlemleyip bu sayıyı ayarlaman gerekecek.
+        """
+        if self.collection.count() == 0:
+            return None
+        try:
+            embedding = self._get_embedding(metin)
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=1,
+                include=["documents", "distances"],
+            )
+            if not results["documents"] or not results["documents"][0]:
+                return None
+            en_yakin_mesafe = results["distances"][0][0]
+            if en_yakin_mesafe <= esik:
+                return results["documents"][0][0]
+            return None
+        except Exception as e:
+            print(f"[SİSTEM UYARISI] Benzerlik kontrolü başarısız: {e}")
+            return None
