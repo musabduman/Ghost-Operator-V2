@@ -370,32 +370,65 @@ class GhostController:
             if not tool_calls:
                 return {"messages": []}
 
-            call = tool_calls[0]
-            isim = call["function"]["name"]
-            args = call["function"]["arguments"]
+            new_messages = []
+            yeni_imzalar = []
             calisan_araclar = state.get("calisan_araclar", [])
 
-            # İmza artık regex ile metinden çıkarılmıyor; tool_call zaten
-            # yapılandırılmış (isim + args dict), doğrudan JSON'a çeviriyoruz.
-            imza = f"{isim}::{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
+            for call in tool_calls:
+                isim = call["function"]["name"]
+                args = call["function"]["arguments"]
+                call_id = call.get("id")
 
-            if imza in calisan_araclar:
-                gozlem = (
-                    f"Bu araç ('{isim}') bu görevde aynı parametrelerle zaten denendi ve "
-                    f"muhtemelen aynı sonucu (hata) verecek. TEKRAR ÇAĞIRMA. "
-                    f"Patron'a durumu açıkla ve gorev_bitti ile bitir."
-                )
-                return {"messages": [{"role": "tool", "content": gozlem}]}
+                imza = f"{isim}::{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
 
-            gozlem = self.tool_runner(isim, args)
+                if imza in calisan_araclar:
+                    gozlem = (
+                        f"Bu araç ('{isim}') bu görevde aynı parametrelerle zaten denendi ve "
+                        f"muhtemelen aynı sonucu (hata) verecek. TEKRAR ÇAĞIRMA. "
+                        f"Patron'a durumu açıkla ve gorev_bitti ile bitir."
+                    )
+                else:
+                    gozlem = self.tool_runner(isim, args)
+                    yeni_imzalar.append(imza)
+
+                new_messages.append({
+                    "role": "tool",
+                    "content": gozlem,
+                    "tool_call_id": call_id,
+                    "name": isim
+                })
+
             return {
-                "messages": [{"role": "tool", "content": gozlem}],
-                "calisan_araclar": [imza],
+                "messages": new_messages,
+                "calisan_araclar": yeni_imzalar,
             }
 
         def coder_node(state: GhostState):
             dosya_yolu = self.yol_duzelt(state["son_istenen_dosya"])
             talimat = state["son_talimat"]
+            calisan_araclar = state.get("calisan_araclar", [])
+
+            # Hangi tool_call ile çağrıldığını bul (OpenAI/Ollama API standartları için)
+            call_id = None
+            if state.get("tool_calls"):
+                call_id = state["tool_calls"][0].get("id")
+
+            # kod_iste imzasını oluştur (dosya + talimat kombinasyonu)
+            imza = f"kod_iste::{dosya_yolu}::{talimat}"
+
+            if imza in calisan_araclar:
+                gozlem = (
+                    f"Aynı dosya ('{dosya_yolu}') için aynı kodlama talimatı zaten denendi. "
+                    f"Tekrar denemek yerine lütfen talimatınızı detaylandırın veya farklı bir yöntem izleyin."
+                )
+                return {
+                    "messages": [{
+                        "role": "tool",
+                        "content": gozlem,
+                        "tool_call_id": call_id,
+                        "name": "kod_iste"
+                    }]
+                }
 
             mevcut_kod = ""
             if os.path.exists(dosya_yolu):
@@ -407,13 +440,28 @@ class GhostController:
 
             try:
                 saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod)
-                # Eskiden [DOSYA_YAZ: ...] tag'i olarak paketlenip tools_node'a
-                # gönderiliyordu ki regex onu yakalasın. Artık dosya_yaz tool'unu
-                # doğrudan çağırıyoruz, ara paketleme adımına gerek yok.
                 yazma_sonucu = self.tool_runner("dosya_yaz", {"yol": dosya_yolu, "icerik": saf_kod})
-                return {"messages": [{"role": "tool", "content": f"Kod işçisi (Qwen) dosyayı yazdı. {yazma_sonucu}"}]}
+                gozlem = f"Kod işçisi (Qwen) dosyayı yazdı. {yazma_sonucu}"
+                
+                return {
+                    "messages": [{
+                        "role": "tool",
+                        "content": gozlem,
+                        "tool_call_id": call_id,
+                        "name": "kod_iste"
+                    }],
+                    "calisan_araclar": [imza]
+                }
             except Exception as e:
-                return {"messages": [{"role": "tool", "content": f"[SİSTEM HATA] Taşeron çöktü: {e}"}]}
+                return {
+                    "messages": [{
+                        "role": "tool",
+                        "content": f"[SİSTEM HATA] Taşeron çöktü: {e}",
+                        "tool_call_id": call_id,
+                        "name": "kod_iste"
+                    }],
+                    "calisan_araclar": [imza]
+                }
 
         def yonlendirici(state: GhostState):
             tool_calls = state.get("tool_calls") or []
@@ -477,11 +525,27 @@ class GhostController:
                 nihai_cevap = m["content"]
 
         # Kalıcı geçmişe bu turun TÜM mesajlarını (tool çağrıları + sonuçları
-        # dahil) yapılandırılmış haliyle ekliyoruz. Eskiden tüm assistant
-        # mesajları tek bir string'de eritilip öyle ekleniyordu; bu hem
-        # modelin bir turda birden fazla etiket yazmasını normalleştiriyordu
-        # hem de tool sonuçlarını kalıcı geçmişten tamamen siliyordu.
+        # dahil) yapılandırılmış haliyle ekliyoruz.
         self.supervisor.mesaj_gecmisi.extend(yeni_mesajlar)
+
+        # Eğer limit aşımı olduysa ve nihai bir cevap üretemediysek,
+        # LLM'e sadece nerede takıldığını ve sorunun ne olduğunu açıklatıyoruz.
+        if not nihai_cevap:
+            kurtarma_promptu = (
+                "[SİSTEM UYARISI]: Patron'un istediği görevi tamamlamak için tanınan 15 adımlık limit sınırına ulaştın "
+                "ve görevi tamamlayamadın. Lütfen şimdiye kadar yaptığın tüm adımları tek tek anlatmak yerine, "
+                "SADECE nerede takıldığını ve sorunun/engelin tam olarak ne olduğunu Patron'a kısaca açıkla. "
+                "Kesinlikle yeni bir araç (tool) çağırma."
+            )
+            # Geçmiş mesajlara (yeni_mesajlar dahil) kurtarma promptunu ekleyip gönderiyoruz
+            kurtarma_mesajlari = self.supervisor.mesaj_gecmisi + [{"role": "user", "content": kurtarma_promptu}]
+            try:
+                response_msg = self.supervisor._raw_call(kurtarma_mesajlari, tools=None)
+                nihai_cevap = response_msg.get("content", "İşlem limit aşımına uğradı ve nerede takıldığımı açıklayamadım.")
+                # Kurtarma yanıtını da geçmişe ekliyoruz
+                self.supervisor.mesaj_gecmisi.append(response_msg)
+            except Exception as e:
+                nihai_cevap = f"[Sistem Hatası] Limit aşımı sonrasında açıklama üretilemedi: {e}"
 
         model_name = "Qwen 480B (Mühendis Kodladı)" if kod_yazildi_mi else "GPT-OSS 120B (Yönetici)"
 
