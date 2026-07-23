@@ -83,3 +83,13 @@ class Bellek:
         except Exception as e:
             print(f"[SİSTEM UYARISI] Benzerlik kontrolü başarısız: {e}")
             return None
+
+    def bellekten_sil(self, metin):
+        if not metin or not metin.strip():
+            return
+        try:
+            metin_hash = hashlib.md5(metin.encode("utf-8")).hexdigest()
+            self.collection.delete(ids=[metin_hash])
+            print(f"[SİSTEM - HAFIZA]: Vektör başarıyla silindi: {metin}")
+        except Exception as e:
+            print(f"[SİSTEM UYARISI] Bellekten silme başarısız: {e}")

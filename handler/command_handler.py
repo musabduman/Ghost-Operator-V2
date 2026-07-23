@@ -15,6 +15,7 @@ import subprocess
 import PIL.ImageGrab
 
 from hafıza.rag_hafıza import Bellek
+from hafıza.episodic_db import EpisodicDB
 from core.planner import PlannerAgent
 from kontrol.spotify import SpotifyManager
 from ai.llm import GhostController, ChatLLM
@@ -38,6 +39,7 @@ class CommandHandler:
         self.app = app
         self.son_komut_sesli = False
         self.bellek = Bellek()
+        self.episodic_db = EpisodicDB()
         self.controller = GhostController(tool_runner=self._execute_tool_call)        
         self.spotify = SpotifyManager()
         self.planner = PlannerAgent()
@@ -88,7 +90,19 @@ class CommandHandler:
             self.app.is_speaking = False
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
+    # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
+    def _set_ui_entry_state(self, state: str, placeholder: str = ""):
+        def update():
+            if hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+                self.app.entry.configure(state=state)
+                if placeholder:
+                    self.app.entry.configure(placeholder_text=placeholder)
+        self.app.after(0, update)
+
     def handle(self, event=None, voice_text=None):
+        if self.su_an_mesgul:
+            return
+
         self.son_komut_sesli = (event is None)
         
         if not self.son_komut_sesli:
@@ -105,8 +119,8 @@ class CommandHandler:
             return
         
         if any(k in user_input.lower() for k in KAPANIŞ_KELİMELERİ):
-            self.app.record_message(f"\nSen: {user_input}")
-            self.app.record_message("Ghost: Anlaşıldı Patron, nöbetçi moduna geçiyorum.", "green")
+            self.app.record_message("user", user_input)
+            self.app.record_message("ghost", "Anlaşıldı Patron, nöbetçi moduna geçiyorum.")
             self.app.after(2000, self.app.destroy)
             return
 
@@ -153,36 +167,43 @@ class CommandHandler:
         ).start()
     
     def _orchestrate_task(self, user_input):
+        self.su_an_mesgul = True
+        self._set_ui_entry_state("disabled", placeholder="Ghost düşünüyor...")
 
-        if getattr(self.app, "_expanded", True):
-            sistem_notu = "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n"
-        else:
-            sistem_notu = "[SİSTEM BİLGİSİ: Şu an KOMPAKT/SESLİ arayüzdesin. Cevaplarını çok KISA, NET ve bir sesli asistanın konuşacağı doğallıkta (maksimum 1-2 cümle) ver. Uzun listeler veya kod blokları KULLANMA.]\n"
-            
-        zengin_input = f"{sistem_notu}Kullanıcı Komutu: {user_input}"
-
-        sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin","nasıl gidiyor"]
-        
-        if any(k in user_input.lower() for k in sohbet_kaliplari):
-            self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
-            try:
-                response, model = self.controller(zengin_input)
-                self._update_model_label(model)
-                display = self._clean_response_for_display(response)
+        try:
+            if getattr(self.app, "_expanded", True):
+                sistem_notu = "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n"
+            else:
+                sistem_notu = "[SİSTEM BİLGİSİ: Şu an KOMPAKT/SESLİ arayüzdesin. Cevaplarını çok KISA, NET ve bir sesli asistanın konuşacağı doğallıkta (maksimum 1-2 cümle) ver. Uzun listeler veya kod blokları KULLANMA.]\n"
                 
-                if display and display.strip():
-                    self.app.record_message("ghost", display)
-                    if self.app.voice_mode:
-                        self._asistan_konus(display)
-                            
-            except Exception as e:
-                self.app.log(f"SİSTEM HATA: {e}", "red")
-                if self.app.voice_mode:
-                    self._asistan_konus("Sistemde bir hata oluştu Patron.")
-            return
+            zengin_input = f"{sistem_notu}{self._enrich_with_memory(user_input)}"
 
-        self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
-        self._agentic_loop(user_input)
+            sohbet_kaliplari = ["nasılsın", "ne haber", "teşekkür", "merhaba", "selam", "iyi misin","nasıl gidiyor"]
+            
+            if any(k in user_input.lower() for k in sohbet_kaliplari):
+                self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
+                try:
+                    response, model = self.controller(zengin_input)
+                    self._update_model_label(model)
+                    display = self._clean_response_for_display(response)
+                    
+                    if display and display.strip():
+                        self.app.record_message("ghost", display)
+                        if self.app.voice_mode:
+                            self._asistan_konus(display)
+                                
+                except Exception as e:
+                    self.app.log(f"SİSTEM HATA: {e}", "red")
+                    if self.app.voice_mode:
+                        self._asistan_konus("Sistemde bir hata oluştu Patron.")
+                return
+
+            self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
+            self._agentic_loop(user_input)
+
+        finally:
+            self.su_an_mesgul = False
+            self._set_ui_entry_state("normal", placeholder="Komut yaz...")
 
     def run_startup(self):
         prompt = (
@@ -256,25 +277,35 @@ class CommandHandler:
         self.app.log(f"🛠️ ARAÇ: {isim.upper()} | DURUM: {'✅' if success else '❌'}", "yellow")
         self.app.log(f"   Param: {args} | Çıktı: {str(result)[:80]}...", "yellow")
 
+        # SQLite'a araç logunu kaydet
+        if hasattr(self, "episodic_db"):
+            self.episodic_db.arac_log_kaydet(
+                self.app.current_session_id,
+                isim,
+                args,
+                str(result),
+                success
+            )
+
         return f"tool={isim}\nsuccess={str(success).lower()}\nresult={result}"
 
     def _enrich_with_memory(self, user_input: str) -> str:
+        # Eğer sistem mesajıysa belleğe sormaya gerek yok
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
             return user_input
+            
         memories = self.bellek.sorgula(soru=user_input, limit=2)
         if not memories:
             return user_input
+            
         context = "\n- ".join(memories)
         return (
-            f"[GİZLİ BİLGİ: Kullanıcı bu komutu SESLİ olarak verdi. "
-            f"Asla uzun cevap verme, saniyeler içinde sadece eylem etiketini kullan.]\n"
-            f"Kullanıcı: {user_input}\n"
-            f"[SİSTEM NOTU: Geçmiş hafızandan şu bilgileri hatırlıyorsun:\n"
+            f"[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatırlıyorsun:\n"
             f"- {context}\n"
-            f"Eğer bu bilgiler kullanıcının sorusuyla ilgiliyse cevaplarken kullan.]\n\n"
+            f"Bu bilgi kullanıcının isteğiyle ilgiliyse yanıtında veya aksiyonlarında kullanabilirsin.]\n"
             f"Kullanıcı Komutu: {user_input}"
         )
- 
+    
     @staticmethod
     def _clean_response_for_display(response: str) -> str:
         result = re.sub(

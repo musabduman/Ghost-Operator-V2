@@ -7,7 +7,7 @@ import threading
 import time
 import pygame
 
-from ai.memory_agent import MemoryAgent
+from ai.librarian_agent import LibrarianAgent
 from handler.voice_handler import VoiceHandler
 from handler.command_handler import CommandHandler
 from ai.konus import GhostSpeech
@@ -47,7 +47,7 @@ class GhostOperatorUI(ctk.CTk):
         self.konus           = GhostSpeech(self)
         self.voice_handler   = VoiceHandler(self)
         self.signal_watcher  = SignalWatcher(self)
-        self.memory_agent    = MemoryAgent()
+        self.librarian       = LibrarianAgent()
 
         # ── Pencere + UI ──────────────────────────────────────────────────────
         self._setup_window()
@@ -177,6 +177,10 @@ class GhostOperatorUI(ctk.CTk):
         ts = int(time.time())
         self._messages.append({"role": role, "text": text, "ts": ts})
 
+        # SQLite olay hafızasına kaydet
+        if hasattr(self, "command_handler") and hasattr(self.command_handler, "episodic_db"):
+            self.command_handler.episodic_db.mesaj_kaydet(self.current_session_id, role, text)
+
         if self._expanded:
             append_chat_bubble(self, role, text)
         else:
@@ -184,16 +188,7 @@ class GhostOperatorUI(ctk.CTk):
             tag = "green" if role == "ghost" else ""
             #self.log(f"{prefix}: {text}", tag)
     
-        # Ghost cevabından sonra çift mesajı birlikte gönder (daha iyi context)
-        if role == "ghost":
-            # Son user mesajını bul
-            user_msg = next(
-                (m["text"] for m in reversed(self._messages[:-1]) if m["role"] == "user"),
-                ""
-            )
-            if user_msg:
-                combined = f"Kullanıcı: {user_msg}\nGhost: {text}"
-                self.memory_agent.asenkron_kaydet(combined)
+        # (Sohbet analizini artık arka planda Kütüphaneci SQLite üzerinden otomatik yapıyor)
                 
     # ── Log (compact modda kullanılır) ────────────────────────────────────────
     def log(self, text: str, tag: str = ""):
@@ -240,6 +235,7 @@ class GhostOperatorUI(ctk.CTk):
     def _startup_sequence(self):
         self.log("[SİSTEM]: Uyanış protokolü başlatıldı...", "green")
         self.set_model_label("Aktif Durum: Sistem Uyanıyor...")
+        self.librarian.start()  # Kütüphaneci döngüsünü başlat
         threading.Thread(target=self.command_handler.run_startup, daemon=True).start()
 
     # ── Lock & Kapatma ────────────────────────────────────────────────────────
@@ -252,6 +248,8 @@ class GhostOperatorUI(ctk.CTk):
     def _on_close(self):
         import os
         self._save_current_session()          # ← kapanışta kaydet
+        if hasattr(self, "librarian"):
+            self.librarian.stop()             # Kütüphaneciyi durdur
         if os.path.exists("ghost_mesgul.lock"):
             os.remove("ghost_mesgul.lock")
         self.destroy()
