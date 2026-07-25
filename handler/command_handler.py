@@ -94,6 +94,8 @@ class CommandHandler:
     def _set_ui_entry_state(self, state: str, placeholder: str = ""):
         def update():
             if hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+                if state == "normal":
+                    self.app.entry.delete(0, "end")   # eski yazıyı temizle
                 self.app.entry.configure(state=state)
                 if placeholder:
                     self.app.entry.configure(placeholder_text=placeholder)
@@ -199,7 +201,7 @@ class CommandHandler:
                 return
 
             self.app.set_model_label("Aktif Durum: Operasyon Başlıyor...")
-            self._agentic_loop(user_input)
+            self._agentic_loop(zengin_input)
 
         finally:
             self.su_an_mesgul = False
@@ -215,10 +217,11 @@ class CommandHandler:
         try:
             cevap, model = self.controller(prompt)
             self._update_model_label(model)
-            self.app.record_message("ghost" ,cevap)
-            
+            self.app.record_message("ghost", cevap)
             self._asistan_konus(cevap)
- 
+            # Başarılı açılışta da mikrofonu başlat
+            self.app.after(300, self.app.voice_handler.start_listening)
+
         except Exception as e:
             self.app.log(f"SİSTEM HATA (Uyanış): {e}", "red")
             # Hata olsa bile sağır kalmaması için mikrofonu başlatıyoruz
@@ -598,6 +601,12 @@ class CommandHandler:
         return "Belirtilen yol bir klasör değil veya bulunamadı."
 
     def _tool_write_file(self, path: str, code: str) -> str:
+        # Göreceli yol ya da sadece dosya adı verilmişse → tools/ klasörüne yönlendir
+        # Mutlak yol verilmişse (C:\... gibi) dokunma
+        if not os.path.isabs(path):
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            path = os.path.join(base_dir, "tools", path)
+
         folder = os.path.dirname(path)
         if folder:
             os.makedirs(folder, exist_ok=True)

@@ -108,11 +108,9 @@ class GhostOperatorUI(ctk.CTk):
         for m in self._messages:
             append_chat_bubble(self, m["role"], m["text"])
 
-    def compact_mode(self): 
-        self._expanded = False
+    def compact_mode(self):
         self.voice_mode = True
-        
-        # Arayüze geçtikten sonra dinlemeyi zorla başlat
+        self._load_compact()                          # pencereyi küçült ve orb arayüzünü yükle
         self.after(500, self.voice_handler.start_listening)
 
     def expand_mode(self):
@@ -142,8 +140,8 @@ class GhostOperatorUI(ctk.CTk):
             for widget in self.chat_scroll.winfo_children():
                 widget.destroy()
         else:
-            self.log_text.delete("1.0", "end")
-            self.log("Yeni oturum başlatıldı.\n", "green")
+            # Compact modda log_text widget'ı yok, sadece konsola bildir
+            print("[SİSTEM]: Yeni oturum başlatıldı.")
 
     def switch_session(self, session_id: str):
         """Sidebar'dan oturum seçilince çağrılır."""
