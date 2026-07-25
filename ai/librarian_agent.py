@@ -7,7 +7,7 @@ from hafıza.episodic_db import EpisodicDB
 from hafıza.rag_hafıza import Bellek
 
 class LibrarianAgent:
-    def __init__(self, model="gpt-oss:20b"):
+    def __init__(self, model="gemma4:31b-cloud"):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.episodic_db = EpisodicDB()
