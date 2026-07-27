@@ -8,12 +8,15 @@ import re
 import sys
 import time
 import queue
+import inspect
 import spotipy
 import traceback
 import threading
 import subprocess   
 import PIL.ImageGrab
+import importlib.util
 
+from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
 from hafıza.rag_hafıza import Bellek
 from hafıza.episodic_db import EpisodicDB
 from core.planner import PlannerAgent
@@ -50,22 +53,26 @@ class CommandHandler:
         # şekilde kurulmuş harita. _execute_tool_call bunu kullanıyor.
         # Değer: (fonksiyon, sırayla_pozisyonel_arg_adlari, yol_cozulecek_arg_adlari)
         self.TOOL_ARG_MAP = {
-            "arama":            (self._tool_search,          ["sorgu"],              []),
-            "klasor_ac":        (self._tool_open_folder,     ["yol"],                ["yol"]),
-            "uygulama_ac":      (self._tool_open_app,        ["isim"],               []),
-            "sarki_ac":         (self._tool_play_song,       ["sarki"],              []),
-            "playlist_ac":      (self._tool_play_playlist,   ["liste"],              []),
-            "not_al":           (self._tool_save_note,       ["bilgi"],              []),
-            "klasor_yap":       (self._tool_make_folder,     ["yol"],                ["yol"]),
-            "klasor_incele":    (self._tool_inspect_folder,  ["yol"],                ["yol"]),
-            "kodu_calistir":    (self._tool_run_code,        ["yol"],                ["yol"]),
-            "dosya_oku":        (self._tool_read_file,       ["yol"],                ["yol"]),
-            "dosya_yaz":        (self._tool_write_file,      ["yol", "icerik"],      ["yol"]),
-            "gozlem_yap":       (self._tool_browser_observe, ["hedef"],              []),
-            "tarayici_tikla":   (self._tool_browser_click,   ["url", "hedef"],       []),
-            "tarayici_yaz":     (self._tool_browser_type,    ["url", "kutu", "metin"], []),
-            "site_oku":         (self._tool_read_website,    ["url"],                []),
-            "ekran_goruntusu":  (self._tool_take_screenshot, ["ne_arayacagim"],      []),
+            "arama":                 (self._tool_search,          ["sorgu"],              []),
+            "klasor_ac":             (self._tool_open_folder,     ["yol"],                ["yol"]),
+            "uygulama_ac":           (self._tool_open_app,        ["isim"],               []),
+            "sarki_ac":              (self._tool_play_song,       ["sarki"],              []),
+            "playlist_ac":           (self._tool_play_playlist,   ["liste"],              []),
+            "not_al":                (self._tool_save_note,       ["bilgi"],              []),
+            "klasor_yap":            (self._tool_make_folder,     ["yol"],                ["yol"]),
+            "klasor_incele":         (self._tool_inspect_folder,  ["yol"],                ["yol"]),
+            "kodu_calistir":         (self._tool_run_code,        ["yol"],                ["yol"]),
+            "dosya_oku":             (self._tool_read_file,       ["yol"],                ["yol"]),
+            "dosya_yaz":             (self._tool_write_file,      ["yol", "icerik"],      ["yol"]),
+            "gozlem_yap":            (self._tool_browser_observe, ["hedef"],              []),
+            "tarayici_tikla":        (self._tool_browser_click,   ["url", "hedef"],       []),
+            "tarayici_yaz":          (self._tool_browser_type,    ["url", "kutu", "metin"], []),
+            "site_oku":              (self._tool_read_website,    ["url"],                []),
+            "ekran_goruntusu":       (self._tool_take_screenshot, ["ne_arayacagim"],      []),
+            "whatsapp_mesaj_gonder": (self._tool_whatsapp_gonder,  ["kisi", "mesaj"], []),
+            "whatsapp_ekrani_oku":   (self._tool_whatsapp_oku,     [],                []),
+            "arac_calistir":         (self._tool_arac_calistir,    ["dosya", "fonksiyon", "parametreler"], []),
+            "araclari_listele":      (self._tool_araclari_listele, [],                []),
         }
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
@@ -404,7 +411,72 @@ class CommandHandler:
             
         except Exception as e:
             return f"Gözlem tamamen başarısız oldu: {str(e)}"
-        
+
+    def _tool_whatsapp_gonder(self, kisi: str, mesaj: str) -> str:
+        self.app.log(f"SİSTEM: WhatsApp'tan '{kisi}' kişisine mesaj gönderiliyor...", "green")
+        return whatsapp_mesaj_gonder(kisi, mesaj)
+
+    def _tool_whatsapp_oku(self) -> str:
+        self.app.log("SİSTEM: WhatsApp ekranı Vision ile okunuyor...", "green")
+        return whatsapp_ekrani_yorumla()
+
+    def _tool_arac_calistir(self, dosya: str, fonksiyon: str, parametreler: dict) -> str:
+        try:
+            mod = self._tool_modulunu_al(dosya)
+        except Exception as e:
+            return f"HATA: '{dosya}' import edilemedi: {e}"
+
+        fn = getattr(mod, fonksiyon, None)
+        if fn is None:
+            mevcut = [n for n in dir(mod) if not n.startswith("_")]
+            return f"HATA: '{fonksiyon}' bulunamadı. '{dosya}' içindeki fonksiyonlar: {mevcut}"
+
+        self.app.log(f"SİSTEM: {dosya}::{fonksiyon}({parametreler}) çalıştırılıyor...", "green")
+        try:
+            return str(fn(**(parametreler or {})))
+        except TypeError as e:
+            imza = inspect.signature(fn)
+            return f"HATA: Parametre uyuşmazlığı. Doğru imza: {fonksiyon}{imza}. Hata: {e}"
+        except Exception as e:
+            return f"HATA: Çalıştırma hatası: {e}"
+
+    def _tool_araclari_listele(self) -> str:
+        tools_dir = self._tools_dir()
+        ozet = []
+        for dosya in sorted(os.listdir(tools_dir)):
+            if not dosya.endswith(".py") or dosya.startswith("_"):
+                continue
+            try:
+                mod = self._tool_modulunu_al(dosya)
+            except Exception as e:
+                ozet.append(f"{dosya}: import hatası ({e})")
+                continue
+            for isim, fn in inspect.getmembers(mod, inspect.isfunction):
+                if isim.startswith("_") or fn.__module__ != mod.__name__:
+                    continue
+                ilk_satir = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
+                ozet.append(f"{dosya}::{isim}{inspect.signature(fn)} - {ilk_satir}")
+        return "\n".join(ozet) if ozet else "tools/ klasöründe fonksiyon bulunamadı."
+
+    def _tools_dir(self) -> str:
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+
+    def _tool_modulunu_al(self, dosya: str):
+        tools_dir = self._tools_dir()
+        yol = os.path.join(tools_dir, dosya)
+        mod_adi = f"tools.{os.path.splitext(dosya)[0]}"
+
+        # Modül daha önce import edildiyse CACHE'DEN dön - state (örn. bir
+        # tarayıcı oturumu) böylece çağrılar arasında canlı kalır.
+        if mod_adi in sys.modules:
+            return sys.modules[mod_adi]
+
+        spec = importlib.util.spec_from_file_location(mod_adi, yol)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[mod_adi] = mod
+        spec.loader.exec_module(mod)
+        return mod
+   
     def _tool_mission_complete(self, nihai_cevap: str) -> str:
         return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
     
