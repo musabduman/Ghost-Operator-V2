@@ -60,7 +60,7 @@ def _arka_planda_cek_ve_yorumla(self, kayit_yolu, soru):
             # 2. YENİLİK: Vision bitti, sıra 120B ana modele geçti ibaresi
             self.set_model_label("Aktif Durum: Düşünüyor (Ana Model)...", "#00FFcc")
             
-            cevap, aktif_model = self.command_handler.controller.generate(birlesik)
+            cevap, aktif_model = self.command_handler.controller(birlesik)
             
             self.after(0, lambda: self.record_message("ghost", cevap))
             

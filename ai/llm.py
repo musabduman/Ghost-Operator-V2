@@ -167,6 +167,51 @@ TOOLS = [
             "ozet": {"type": "string", "description": "Patrona verilecek nihai cevap veya özet"}
         }, "required": ["ozet"]}
     }},
+
+    {"type": "function", "function": {
+        "name": "whatsapp_mesaj_gonder",
+        "description": (
+            "WhatsApp Web üzerinden belirtilen kişiye mesaj gönderir. "
+            "WhatsApp mesajı göndermek istendiğinde SADECE bunu kullan - "
+            "dosya_yaz/kodu_calistir ile kendi script'ini YAZMA."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "kisi": {"type": "string", "description": "Mesaj gönderilecek kişi veya grup adı"},
+            "mesaj": {"type": "string", "description": "Gönderilecek mesaj metni"}
+        }, "required": ["kisi", "mesaj"]}
+    }},
+
+    {"type": "function", "function": {
+        "name": "whatsapp_ekrani_oku",
+        "description": "Açık WhatsApp sohbetini Vision ile okur, mesajları özetler.",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+
+    {"type": "function", "function": {
+        "name": "araclari_listele",
+        "description": (
+            "tools/ klasöründeki tüm dosyalardaki fonksiyonları, parametrelerini "
+            "ve açıklamalarını listeler. arac_calistir kullanmadan ÖNCE, hangi "
+            "fonksiyonun hangi parametreleri aldığını görmek için bunu çağır."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+
+    {"type": "function", "function": {
+        "name": "arac_calistir",
+        "description": (
+            "tools/ klasöründeki bir dosyadaki belirli bir fonksiyonu, verilen "
+            "parametrelerle çağırır. tools/ klasöründeki hazır yardımcı fonksiyonları "
+            "kullanmak için SADECE bunu kullan - dosya_yaz ile glue script yazıp "
+            "kodu_calistir ile subprocess olarak ÇALIŞTIRMA, bu hem yavaş hem de "
+            "tarayıcı/bağlantı gibi kalıcı kaynakları koruyamaz."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "dosya": {"type": "string", "description": "tools/ altındaki dosya adı, örn: whatsapp_tool.py"},
+            "fonksiyon": {"type": "string", "description": "Çağrılacak fonksiyonun adı"},
+            "parametreler": {"type": "object", "description": "Fonksiyona geçirilecek anahtar-değer parametreler"}
+        }, "required": ["dosya", "fonksiyon"]}
+    }},
 ]
 
 

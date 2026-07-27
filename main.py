@@ -167,7 +167,7 @@ class GhostOperatorUI(ctk.CTk):
 
     # ── Mesaj kayıt API'si (command_handler buraya yazar) ────────────────────
 
-    def record_message(self, role: str, text: str):
+    def record_message(self, role: str, text: str): 
         """
         role: 'user' veya 'ghost'
         Hem _messages listesine hem de aktif UI'ya yazar.
