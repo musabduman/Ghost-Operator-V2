@@ -16,7 +16,6 @@ import subprocess
 import PIL.ImageGrab
 import importlib.util
 
-from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
 from hafıza.rag_hafıza import Bellek
 from hafıza.episodic_db import EpisodicDB
 from core.planner import PlannerAgent
@@ -25,8 +24,9 @@ from ai.llm import GhostController, ChatLLM
 from ui.compact_ui import set_voice_state
 from vison.vison import minimax_vision_analiz
 from tools.browser_tool import get_dom_elements
+from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
 from core.fs import (
-    akilli_yol_cozucu, alternatif_yol_bul, derin_arama, kodu_calistir
+    akilli_yol_cozucu, derin_arama, kodu_calistir
 )
  
 KAPANIŞ_KELİMELERİ = ["uyku modu", "teşekkürler ghost", "kapan", "çıkış yap", "görüşürüz"]

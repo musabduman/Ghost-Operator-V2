@@ -7,12 +7,12 @@ import threading
 import time
 import pygame
 
-from ai.librarian_agent import LibrarianAgent
-from handler.voice_handler import VoiceHandler
-from handler.command_handler import CommandHandler
 from ai.konus import GhostSpeech
 from hafıza.rag_hafıza import Bellek
 from kontrol.spotify import SpotifyManager
+from ai.librarian_agent import LibrarianAgent
+from handler.voice_handler import VoiceHandler
+from handler.command_handler import CommandHandler
 from uyandırma.signal_watcher import SignalWatcher
 from vison.screenshot import screenshot_al_ve_yorumla
 
@@ -245,6 +245,11 @@ class GhostOperatorUI(ctk.CTk):
 
     def _on_close(self):
         import os
+        from tools.whatsapp_tool import whatsapp_kapat
+        try:
+            whatsapp_kapat()
+        except Exception:
+            pass
         self._save_current_session()          # ← kapanışta kaydet
         if hasattr(self, "librarian"):
             self.librarian.stop()             # Kütüphaneciyi durdur
