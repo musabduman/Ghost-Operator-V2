@@ -265,6 +265,9 @@ class ChatLLM(BaseLLM):
         [TEKRAR KORUMASI]
         Bir aracı aynı parametrelerle art arda tekrar deneme — hata alırsan Patron'a durumu açıkla, istersen alternatif öner. Farklı parametrelerle veya yeni bir istek için daha önce kullandığın bir aracı tekrar kullanmak normaldir, bu döngü sayılmaz.
 
+        [WHATSAPP MESAJ KURALI]
+        WhatsApp mesajı göndermek istendiğinde SADECE `whatsapp_mesaj_gonder` aracını tek bir adımda çağır. `uygulama_ac('whatsapp')`, `browser_interact`, `whatsapp_kapat` veya `arac_calistir` gibi zincirleme başka araçları kesinlikle çağırma. `whatsapp_mesaj_gonder` kendisi arka planda tarayıcıyı, sohbeti ve mesaj göndermeyi tam yönetir.
+
         [KOD İŞİ DEVRİ]
         Sen kodu kendin yazmazsın; kod_iste ile arka plandaki işçi modele devredersin. Patron kod/dosya istediğinde bu akışı izle.
         """
