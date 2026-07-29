@@ -15,204 +15,10 @@ class GhostState(TypedDict):
     tool_calls: list
 
 
-# ── JSON TOOL ŞEMASI (gpt-oss native tool calling) ──────────────────────────
-# Eskiden bu liste ana_kurallar'ın içinde [ETİKET: <param>] formatında
-# metin olarak yazılıyordu ve supervisor_node'un ürettiği ham metin regex'le
-# taranıyordu. gpt-oss (cloud dahil) native function calling destekliyor,
-# bu yüzden model artık "doğru formatta yazmayı hatırlamak" zorunda değil;
-# hangi tool'u ne zaman çağıracağını API seviyesinde, tool_calls olarak
-# structured döndürüyor.
-TOOLS = [
-    {"type": "function", "function": {
-        "name": "arama",
-        "description": "İnternette genel bir bilgi aramak için kullan (haber, güncel olay, tanım, maç skoru, hava durumu vb).",
-        "parameters": {"type": "object", "properties": {
-            "sorgu": {"type": "string", "description": "Aranacak sorgu"}
-        }, "required": ["sorgu"]}
-    }},
-    {"type": "function", "function": {
-        "name": "klasor_ac",
-        "description": "Var olan bir klasörü dosya gezgininde açar.",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "Açılacak klasörün tam yolu"}
-        }, "required": ["yol"]}
-    }},
-    {"type": "function", "function": {
-        "name": "uygulama_ac",
-        "description": "Bir masaüstü uygulamasını başlatır (örn: code, chrome, spotify, discord).",
-        "parameters": {"type": "object", "properties": {
-            "isim": {"type": "string", "description": "Uygulamanın sistem kısa adı"}
-        }, "required": ["isim"]}
-    }},
-    {"type": "function", "function": {
-        "name": "sarki_ac",
-        "description": "Spotify'da belirli bir şarkıyı çalar. Müzik isteklerinde görsel/tarayıcı araçlarını DEĞİL, daima bunu kullan.",
-        "parameters": {"type": "object", "properties": {
-            "sarki": {"type": "string", "description": "Şarkı ve sanatçı adı"}
-        }, "required": ["sarki"]}
-    }},
-    {"type": "function", "function": {
-        "name": "playlist_ac",
-        "description": "Spotify'da bir çalma listesini başlatır.",
-        "parameters": {"type": "object", "properties": {
-            "liste": {"type": "string", "description": "Çalma listesi adı"}
-        }, "required": ["liste"]}
-    }},
-    {"type": "function", "function": {
-        "name": "not_al",
-        "description": "Kalıcı olarak hatırlanması gereken bir bilgiyi hafızaya kazır.",
-        "parameters": {"type": "object", "properties": {
-            "bilgi": {"type": "string", "description": "Hatırlanacak bilgi, 3. şahısla kısa özet"}
-        }, "required": ["bilgi"]}
-    }},
-    {"type": "function", "function": {
-        "name": "klasor_yap",
-        "description": "Yeni bir klasör oluşturur. İçine .py/.txt gibi dosya konacaksa BUNU KULLANMA, dosya_yaz zaten klasörü kendi oluşturur.",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "Oluşturulacak klasörün tam yolu"}
-        }, "required": ["yol"]}
-    }},
-    {"type": "function", "function": {
-        "name": "klasor_incele",
-        "description": "Bir klasörün içeriğini listeler (röntgen).",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "İncelenecek klasörün tam yolu"}
-        }, "required": ["yol"]}
-    }},
-    {"type": "function", "function": {
-        "name": "kodu_calistir",
-        "description": "Bir Python dosyasını çalıştırıp çıktısını veya hatasını döndürür. Ayrıca daha önce üretilmiş dinamik tool script'lerini çalıştırmak için de kullanılır.",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "Çalıştırılacak dosyanın tam yolu"}
-        }, "required": ["yol"]}
-    }},
-    {"type": "function", "function": {
-        "name": "dosya_oku",
-        "description": "Bir dosyanın içeriğini okur.",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "Okunacak dosyanın tam yolu"}
-        }, "required": ["yol"]}
-    }},
-    {"type": "function", "function": {
-        "name": "dosya_yaz",
-        "description": "Bir dosyaya içerik yazar (üzerine yazar veya oluşturur). Klasör yoksa otomatik oluşturur.",
-        "parameters": {"type": "object", "properties": {
-            "yol": {"type": "string", "description": "Yazılacak dosyanın tam yolu"},
-            "icerik": {"type": "string", "description": "Dosyaya yazılacak tam içerik"}
-        }, "required": ["yol", "icerik"]}
-    }},
-    {"type": "function", "function": {
-        "name": "gozlem_yap",
-        "description": (
-            "Bir web sayfasının veya masaüstünün buton/kutularını keşfeder. "
-            "Steam/Trendyol/Yemeksepeti gibi e-ticaret, vitrin veya liste "
-            "sayfalarında (ürün/fiyat varsa) site_oku YERİNE bunu kullan."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "hedef": {"type": "string", "description": "Tam URL veya 'masaustu'"}
-        }, "required": ["hedef"]}
-    }},
-    {"type": "function", "function": {
-        "name": "tarayici_tikla",
-        "description": "Belirtilen URL'de bir buton veya linke tıklar.",
-        "parameters": {"type": "object", "properties": {
-            "url": {"type": "string", "description": "Tam URL"},
-            "hedef": {"type": "string", "description": "Tıklanacak buton/link metni"}
-        }, "required": ["url", "hedef"]}
-    }},
-    {"type": "function", "function": {
-        "name": "tarayici_yaz",
-        "description": "Belirtilen URL'deki bir kutuya metin yazar.",
-        "parameters": {"type": "object", "properties": {
-            "url": {"type": "string", "description": "Tam URL"},
-            "kutu": {"type": "string", "description": "Kutunun adı veya placeholder'ı"},
-            "metin": {"type": "string", "description": "Yazılacak metin"}
-        }, "required": ["url", "kutu", "metin"]}
-    }},
-    {"type": "function", "function": {
-        "name": "site_oku",
-        "description": (
-            "Wikipedia, haber veya blog gibi uzun metinli sayfaların içeriğini okur. "
-            "Katalog/e-ticaret sayfaları için KULLANMA, onun yerine gozlem_yap kullan."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "url": {"type": "string", "description": "Tam URL"}
-        }, "required": ["url"]}
-    }},
-    {"type": "function", "function": {
-        "name": "ekran_goruntusu",
-        "description": "Kullanıcının ekranına bakıp analiz eder (görsel gözlem / vizyon).",
-        "parameters": {"type": "object", "properties": {
-            "ne_arayacagim": {"type": "string", "description": "Ekranda nelere dikkat edileceği"}
-        }, "required": ["ne_arayacagim"]}
-    }},
-    {"type": "function", "function": {
-        "name": "kod_iste",
-        "description": (
-            "Yeni bir kod dosyası yazılmasını veya var olan bir dosyanın güncellenmesini "
-            "işçi modele (Qwen) devreder. Kodu SEN yazmazsın, bu aracı çağırırsın."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "dosya": {"type": "string", "description": "tool/ klasörü altında tam dosya yolu, örn: tool/hava_durumu.py"},
-            "talimat": {"type": "string", "description": "İşçiye verilecek net, doğal dilde kod yazma talimatı (Python kodu/markdown YAZMA)"}
-        }, "required": ["dosya", "talimat"]}
-    }},
-    {"type": "function", "function": {
-        "name": "gorev_bitti",
-        "description": (
-            "Aradığın bilgiye ulaştığında, işlemi tamamladığında veya sohbeti bitirdiğinde "
-            "döngüden çıkmak için KESİNLİKLE bunu çağır."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "ozet": {"type": "string", "description": "Patrona verilecek nihai cevap veya özet"}
-        }, "required": ["ozet"]}
-    }},
+from core.tool_registry import tool_registry
 
-    {"type": "function", "function": {
-        "name": "whatsapp_mesaj_gonder",
-        "description": (
-            "WhatsApp Web üzerinden belirtilen kişiye mesaj gönderir. "
-            "WhatsApp mesajı göndermek istendiğinde SADECE bunu kullan - "
-            "dosya_yaz/kodu_calistir ile kendi script'ini YAZMA."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "kisi": {"type": "string", "description": "Mesaj gönderilecek kişi veya grup adı"},
-            "mesaj": {"type": "string", "description": "Gönderilecek mesaj metni"}
-        }, "required": ["kisi", "mesaj"]}
-    }},
-
-    {"type": "function", "function": {
-        "name": "whatsapp_ekrani_oku",
-        "description": "Açık WhatsApp sohbetini Vision ile okur, mesajları özetler.",
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    }},
-
-    {"type": "function", "function": {
-        "name": "araclari_listele",
-        "description": (
-            "tools/ klasöründeki tüm dosyalardaki fonksiyonları, parametrelerini "
-            "ve açıklamalarını listeler. arac_calistir kullanmadan ÖNCE, hangi "
-            "fonksiyonun hangi parametreleri aldığını görmek için bunu çağır."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    }},
-
-    {"type": "function", "function": {
-        "name": "arac_calistir",
-        "description": (
-            "tools/ klasöründeki bir dosyadaki belirli bir fonksiyonu, verilen "
-            "parametrelerle çağırır. tools/ klasöründeki hazır yardımcı fonksiyonları "
-            "kullanmak için SADECE bunu kullan - dosya_yaz ile glue script yazıp "
-            "kodu_calistir ile subprocess olarak ÇALIŞTIRMA, bu hem yavaş hem de "
-            "tarayıcı/bağlantı gibi kalıcı kaynakları koruyamaz."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "dosya": {"type": "string", "description": "tools/ altındaki dosya adı, örn: whatsapp_tool.py"},
-            "fonksiyon": {"type": "string", "description": "Çağrılacak fonksiyonun adı"},
-            "parametreler": {"type": "object", "description": "Fonksiyona geçirilecek anahtar-değer parametreler"}
-        }, "required": ["dosya", "fonksiyon"]}
-    }},
-]
+# ── JSON TOOL ŞEMASI (Single Source of Truth - tool_registry) ───────────────
+TOOLS = tool_registry.get_schemas()
 
 
 class BaseLLM:
@@ -520,15 +326,75 @@ class GhostController:
             if isim == "kod_iste":
                 return "coder"
             if isim == "gorev_bitti":
-                return END
+                return "critic"
             return "tools"
+
+        def critic_node(state: GhostState):
+            # İlk mesaj (kullanıcı talebi) (system mesajından sonraki ilk user mesajı)
+            ilk_istek = state["messages"][1]["content"] if len(state["messages"]) > 1 else ""
+            
+            # Son araç çağrıları ve supervisor'ın gorev_bitti argümanı
+            son_adimlar = ""
+            for m in state["messages"][-5:]:
+                rol = m.get("role", "")
+                isim = m.get("name", "")
+                tc = m.get("tool_calls", [])
+                
+                icerik = m.get("content", "")
+                if tc and tc[0]["function"]["name"] == "gorev_bitti":
+                    # Argümanları json olarak alalım, string objesiyse string yapalım
+                    args = tc[0]["function"]["arguments"]
+                    icerik = args.get("ozet", str(args))
+                
+                son_adimlar += f"[{rol.upper()}{' - ' + isim if isim else ''}]: {icerik}\n"
+
+            critic_prompt = f"""[ELEŞTİRMEN MODU]
+Sen Ghost'un iç denetçisisin (Critic). 
+Görev: Ghost'un kullanıcının isteğini doğru, eksiksiz ve hatasız bir şekilde tamamlayıp tamamlamadığını denetlemek.
+
+Kullanıcının İlk İsteği: 
+"{ilk_istek}"
+
+Ghost'un Son Adımları ve Ürettiği Nihai Cevap:
+{son_adimlar}
+
+Kurallar:
+1. Eğer Ghost kullanıcının isteğini tam anlamıyla, hatasız ve doğru tamamlamışsa SADECE "BAŞARILI" yaz. Başka hiçbir şey yazma.
+2. Eğer Ghost'un cevabı yanlış, eksik, halüsinasyon içeriyorsa veya hedefe ulaşmadan pes etmişse, "EKSİK:" diyerek Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
+Asla kod yazma, sadece eleştirini belirt."""
+
+            try:
+                # Eleştirmeni kendi supervisor objesi ile ama tools olmadan çağır.
+                msg = self.supervisor._raw_call([{"role": "user", "content": critic_prompt}], tools=None)
+                degerlendirme = msg.get("content", "").strip()
+                
+                if degerlendirme.startswith("BAŞARILI"):
+                    return {"messages": []}
+                else:
+                    # Modelin eleştiriyi bir sistem veya araç çıktısı gibi alıp düzeltebilmesi için user mesajı veriyoruz
+                    return {
+                        "messages": [{
+                            "role": "user", 
+                            "content": f"[SİSTEM ELEŞTİRMENİ UYARISI]: Cevabın veya eylemin yetersiz bulundu. Lütfen şu eleştiriye göre işlemini düzelt ve tekrar dene:\n{degerlendirme}"
+                        }]
+                    }
+            except Exception as e:
+                # Çökerse akışı kesmemek için sessizce geç
+                return {"messages": []}
+
+        def critic_yonlendirici(state: GhostState):
+            if state["messages"] and "[SİSTEM ELEŞTİRMENİ UYARISI]" in state["messages"][-1].get("content", ""):
+                return "supervisor"
+            return END
 
         workflow.add_node("supervisor", supervisor_node)
         workflow.add_node("coder", coder_node)
         workflow.add_node("tools", tools_node)
+        workflow.add_node("critic", critic_node)
 
         workflow.set_entry_point("supervisor")
         workflow.add_conditional_edges("supervisor", yonlendirici)
+        workflow.add_conditional_edges("critic", critic_yonlendirici)
 
         # Araç veya coder çalıştıktan sonra sonuçla birlikte Yöneticiye geri dön
         workflow.add_edge("tools", "supervisor")
