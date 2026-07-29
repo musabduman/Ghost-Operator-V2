@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+import json
 import queue
 import inspect
 import spotipy
@@ -18,7 +19,6 @@ import importlib.util
 
 from hafıza.rag_hafıza import Bellek
 from hafıza.episodic_db import EpisodicDB
-from core.planner import PlannerAgent
 from kontrol.spotify import SpotifyManager
 from ai.llm import GhostController, ChatLLM
 from ui.compact_ui import set_voice_state
@@ -35,7 +35,20 @@ SESLI_MOD_GECIS = ["sesli moda geç", "orb moduna geç", "arayüzü küçült", 
 YAZILI_MOD_GECIS = ["yazılı moda geç", "terminali aç", "arayüzü genişlet", "geniş ekrana geç", "sohbet moduna geç"]
 
 MAX_DEPTH = 2
+
+# proje_durumu tablosunu güncellemesi gereken, yol tabanlı çalışan araçlar.
+# Değer: args içindeki hangi anahtarın "dosya/klasör yolu" olduğu.
+DURUM_GUNCELLENECEK_ARACLAR = {
+    "dosya_oku":       "yol",
+    "dosya_yaz":       "yol",
+    "klasor_incele":   "yol",
+    "kodu_calistir":   "yol",
+    "klasor_ac":       "yol",
+    "klasor_yap":      "yol",
+}
  
+from core.tool_registry import tool_registry
+
 class CommandHandler:
  
     def __init__(self, app):
@@ -45,35 +58,35 @@ class CommandHandler:
         self.episodic_db = EpisodicDB()
         self.controller = GhostController(tool_runner=self._execute_tool_call)        
         self.spotify = SpotifyManager()
-        self.planner = PlannerAgent()
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
+
+        # Single Source of Truth: Tüm çalıştırma fonksiyonlarını tool_registry'ye bağla
+        tool_registry.bind_handler("arama", self._tool_search)
+        tool_registry.bind_handler("klasor_ac", self._tool_open_folder)
+        tool_registry.bind_handler("uygulama_ac", self._tool_open_app)
+        tool_registry.bind_handler("sarki_ac", self._tool_play_song)
+        tool_registry.bind_handler("playlist_ac", self._tool_play_playlist)
+        tool_registry.bind_handler("not_al", self._tool_save_note)
+        tool_registry.bind_handler("klasor_yap", self._tool_make_folder)
+        tool_registry.bind_handler("klasor_incele", self._tool_inspect_folder)
+        tool_registry.bind_handler("kodu_calistir", self._tool_run_code)
+        tool_registry.bind_handler("dosya_oku", self._tool_read_file)
+        tool_registry.bind_handler("dosya_yaz", self._tool_write_file)
+        tool_registry.bind_handler("gozlem_yap", self._tool_browser_observe)
+        tool_registry.bind_handler("tarayici_tikla", self._tool_browser_click)
+        tool_registry.bind_handler("tarayici_yaz", self._tool_browser_type)
+        tool_registry.bind_handler("site_oku", self._tool_read_website)
+        tool_registry.bind_handler("ekran_goruntusu", self._tool_take_screenshot)
+        tool_registry.bind_handler("whatsapp_mesaj_gonder", self._tool_whatsapp_gonder)
+        tool_registry.bind_handler("whatsapp_ekrani_oku", self._tool_whatsapp_oku)
+        tool_registry.bind_handler("arac_calistir", self._tool_arac_calistir)
+        tool_registry.bind_handler("araclari_listele", self._tool_araclari_listele)
+        tool_registry.bind_handler("durum_getir", self._tool_durum_getir)
+        tool_registry.bind_handler("proje_adi_ayarla", self._tool_proje_adi_ayarla)
+        tool_registry.bind_handler("uzun_gorev_plani_yap", self._tool_uzun_gorev_plani_yap)
         
-        # llm.py'deki TOOLS (JSON schema) ile isim ve argüman adı eşleşecek
-        # şekilde kurulmuş harita. _execute_tool_call bunu kullanıyor.
-        # Değer: (fonksiyon, sırayla_pozisyonel_arg_adlari, yol_cozulecek_arg_adlari)
-        self.TOOL_ARG_MAP = {
-            "arama":                 (self._tool_search,          ["sorgu"],              []),
-            "klasor_ac":             (self._tool_open_folder,     ["yol"],                ["yol"]),
-            "uygulama_ac":           (self._tool_open_app,        ["isim"],               []),
-            "sarki_ac":              (self._tool_play_song,       ["sarki"],              []),
-            "playlist_ac":           (self._tool_play_playlist,   ["liste"],              []),
-            "not_al":                (self._tool_save_note,       ["bilgi"],              []),
-            "klasor_yap":            (self._tool_make_folder,     ["yol"],                ["yol"]),
-            "klasor_incele":         (self._tool_inspect_folder,  ["yol"],                ["yol"]),
-            "kodu_calistir":         (self._tool_run_code,        ["yol"],                ["yol"]),
-            "dosya_oku":             (self._tool_read_file,       ["yol"],                ["yol"]),
-            "dosya_yaz":             (self._tool_write_file,      ["yol", "icerik"],      ["yol"]),
-            "gozlem_yap":            (self._tool_browser_observe, ["hedef"],              []),
-            "tarayici_tikla":        (self._tool_browser_click,   ["url", "hedef"],       []),
-            "tarayici_yaz":          (self._tool_browser_type,    ["url", "kutu", "metin"], []),
-            "site_oku":              (self._tool_read_website,    ["url"],                []),
-            "ekran_goruntusu":       (self._tool_take_screenshot, ["ne_arayacagim"],      []),
-            "whatsapp_mesaj_gonder": (self._tool_whatsapp_gonder,  ["kisi", "mesaj"], []),
-            "whatsapp_ekrani_oku":   (self._tool_whatsapp_oku,     [],                []),
-            "arac_calistir":         (self._tool_arac_calistir,    ["dosya", "fonksiyon", "parametreler"], []),
-            "araclari_listele":      (self._tool_araclari_listele, [],                []),
-        }
+        self.aktif_plan = None
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
@@ -261,24 +274,20 @@ class CommandHandler:
                 self._asistan_konus(hata_mesaji)
 
     def _execute_tool_call(self, isim: str, args: dict) -> str:
-        """llm.py'nin tools_node'u tarafından çağrılır. Artık ham metin
-        parse etmiyoruz; isim ve args zaten Ollama'nın tool_calls'ından
-        gelen yapılandırılmış veri."""
-        if isim not in self.TOOL_ARG_MAP:
-            return f"Bilinmeyen araç: {isim}"
-
-        func, arg_adlari, yol_coz_alanlari = self.TOOL_ARG_MAP[isim]
-
+        """llm.py'nin tools_node'u tarafından çağrılır. tool_registry üzerinden
+        otomatik parametre dizilimi ve yol çözümü ile çalıştırılır."""
         try:
-            cagri_parametreleri = []
-            for arg_adi in arg_adlari:
-                deger = args.get(arg_adi, "")
-                if arg_adi in yol_coz_alanlari:
-                    deger = akilli_yol_cozucu(deger)
-                cagri_parametreleri.append(deger)
+            result = tool_registry.execute(isim, args, self)
+            success = not str(result).startswith("Bilinmeyen araç") and not str(result).startswith("Araç çalışırken çöktü")
 
-            result = func(*cagri_parametreleri)
-            success = True
+            # Eğer bir plan aktifse ve bu araç plan yapma aracı değilse, sonuca hatırlatma ekle
+            if self.aktif_plan and isim not in ["uzun_gorev_plani_yap", "gorev_bitti"]:
+                hedef = self.aktif_plan["hedef"]
+                result = f"{result}\n\n[SİSTEM HATIRLATMASI: Şu an '{hedef}' hedefine yönelik uzun görev planını yürütüyorsun. Planına sadık kal ve işin bittiyse sıradaki adıma geç. Tüm plan bittiyse gorev_bitti çağır.]"
+                
+            if isim == "gorev_bitti":
+                self.aktif_plan = None # Görev bittiyse planı sıfırla
+
         except Exception as e:
             result = f"Araç çalışırken çöktü: {str(e)}"
             success = False
@@ -297,7 +306,79 @@ class CommandHandler:
                 success
             )
 
-        return f"tool={isim}\nsuccess={str(success).lower()}\nresult={result}"
+        # Dosya/klasör bazlı bir araçsa, proje durum hafızasını güncelle
+        proje_notu = None
+        if success and isim in DURUM_GUNCELLENECEK_ARACLAR:
+            proje_notu = self._proje_durumu_guncelle(isim, args)
+
+        donen_metin = f"tool={isim}\nsuccess={str(success).lower()}\nresult={result}"
+        if proje_notu:
+            donen_metin += f"\n\n{proje_notu}"
+        return donen_metin
+
+    def _proje_durumu_guncelle(self, isim: str, args: dict) -> str:
+        """
+        proje_durumu tablosunu günceller. Kök dizin proje_yol_haritasi'nda
+        biliniyorsa sessizce günceller. Bilinmiyorsa geçici bir anahtar altında
+        durumu tutar ve modele Patron'a bir kereliğine proje adını sorup
+        proje_adi_ayarla ile kaydetmesini söyleyen bir sistem notu döndürür.
+        """
+        yol_anahtari = DURUM_GUNCELLENECEK_ARACLAR.get(isim)
+        yol = args.get(yol_anahtari) if yol_anahtari else None
+        if not yol:
+            return None
+
+        aktif_dizin = os.path.dirname(yol) if (os.path.isfile(yol) or "." in os.path.basename(yol)) else yol
+
+        try:
+            bilinen_proje = self.episodic_db.proje_adi_bul(yol)
+
+            if bilinen_proje:
+                self.episodic_db.durum_guncelle(
+                    proje_adi=bilinen_proje,
+                    aktif_dizin=aktif_dizin,
+                    dokunulan_dosya=yol,
+                    gorev_ozeti=f"Son işlem: {isim} -> {os.path.basename(yol)}"
+                )
+                return None
+
+            # Bilinmeyen kök dizin: durumu geçici bir anahtar altında tut
+            gecici_anahtar = f"_bilinmiyor::{aktif_dizin}"
+            self.episodic_db.durum_guncelle(
+                proje_adi=gecici_anahtar,
+                aktif_dizin=aktif_dizin,
+                dokunulan_dosya=yol,
+                gorev_ozeti=f"Son işlem: {isim} -> {os.path.basename(yol)} (proje adı henüz belirlenmedi)"
+            )
+            return (
+                f"[SİSTEM NOTU: '{aktif_dizin}' dizini için kayıtlı bir proje adı yok. "
+                f"Eğer bu bir proje klasörüyse, Patron'a bu klasör için ne isim vermek istediğini BİR KERELİĞİNE sor, "
+                f"cevabı alınca proje_adi_ayarla(kok_dizin='{aktif_dizin}', proje_adi=<cevap>) aracını çağırıp kaydet. "
+                f"Sıradan/geçici bir dosya işlemiyse sormana gerek yok, sessizce devam et.]"
+            )
+        except Exception as e:
+            self.app.log(f"SİSTEM UYARISI: Proje durumu güncellenemedi: {e}", "yellow")
+            return None
+
+    def _tool_proje_adi_ayarla(self, kok_dizin: str, proje_adi: str) -> str:
+        self.episodic_db.proje_adi_ayarla(kok_dizin, proje_adi)
+
+        # Geçici anahtar altında tutulan durum varsa gerçek proje adına taşı
+        gecici_anahtar = f"_bilinmiyor::{kok_dizin}"
+        gecici_durum = self.episodic_db.durum_getir(gecici_anahtar)
+        if gecici_durum:
+            dosyalar = json.loads(gecici_durum["son_dokunulan_dosyalar"]) if gecici_durum["son_dokunulan_dosyalar"] else []
+            self.episodic_db.durum_guncelle(
+                proje_adi=proje_adi,
+                aktif_dizin=gecici_durum["aktif_dizin"],
+                gorev_ozeti=gecici_durum["son_gorev_ozeti"]
+            )
+            for dosya in reversed(dosyalar):
+                self.episodic_db.durum_guncelle(proje_adi=proje_adi, dokunulan_dosya=dosya)
+            self.episodic_db.proje_durumu_sil(gecici_anahtar)
+
+        self.app.log(f"SİSTEM: '{kok_dizin}' artık '{proje_adi}' projesi olarak kayıtlı.", "green")
+        return f"'{kok_dizin}' dizini bundan sonra '{proje_adi}' projesi olarak hatırlanacak."
 
     def _enrich_with_memory(self, user_input: str) -> str:
         # Eğer sistem mesajıysa belleğe sormaya gerek yok
@@ -374,7 +455,15 @@ class CommandHandler:
             return f"Site metni okunamadı: {url}"
         except Exception as e:
             return f"Okuma sırasında hata oluştu: {str(e)}"
-        
+
+    def _tool_uzun_gorev_plani_yap(self, hedef: str, adimlar: list) -> str:
+        self.aktif_plan = {
+            "hedef": hedef,
+            "adimlar": adimlar
+        }
+        plan_str = "\n".join(f"{i+1}. {a}" for i, a in enumerate(adimlar))
+        return f"Plan başarıyla kaydedildi. HEDEF: {hedef}\nADIMLAR:\n{plan_str}\nLütfen şimdi araçlarını kullanarak 1. adımdan uygulamaya başla."
+
     def _tool_browser_type(self, url: str, hedef_metin: str, yazi_icerigi: str) -> str:
         self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine '{yazi_icerigi}' yazılıyor...", "green")
         from tools.browser_tool import browser_interact
@@ -576,6 +665,33 @@ class CommandHandler:
         except Exception as e:
             return f"Maalesef Görsel Arama B Planı da başarısız oldu: {str(e)}\nLütfen Kullanıcıya internet bağlantısı sorunu olduğunu söyle."
                             
+    def _tool_durum_getir(self, proje_adi: str) -> str:
+        """
+        proje_adi boş/"son"/"en son" gibi verilirse en son aktif olan projeyi getirir.
+        Aksi halde belirtilen proje adına ait durumu getirir.
+        """
+        proje_adi = (proje_adi or "").strip().lower()
+
+        if not proje_adi or proje_adi in ("son", "en son", "son proje", "kaldığımız yer"):
+            durum = self.episodic_db.son_aktif_projeyi_getir()
+        else:
+            durum = self.episodic_db.durum_getir(proje_adi)
+
+        if not durum:
+            projeler = self.episodic_db.tum_projeleri_listele()
+            if projeler:
+                isimler = ", ".join(p["proje_adi"] for p in projeler)
+                return f"'{proje_adi}' için kayıtlı durum bulunamadı. Bilinen projeler: {isimler}"
+            return "Henüz kayıtlı hiçbir proje durumu yok."
+
+        dosyalar = json.loads(durum["son_dokunulan_dosyalar"]) if durum["son_dokunulan_dosyalar"] else []
+        return (
+            f"Proje: {durum['proje_adi']}\n"
+            f"Aktif Dizin: {durum['aktif_dizin']}\n"
+            f"Son Dokunulan Dosyalar: {', '.join(dosyalar[:5])}\n"
+            f"Son Görev Özeti: {durum['son_gorev_ozeti']}"
+        )
+
     def _tool_open_folder(self, path: str) -> str:
         if os.path.exists(path):
             os.startfile(path)
@@ -708,4 +824,4 @@ class CommandHandler:
             files = ", ".join(os.listdir(folder)) or "Klasör boş."
             return f"Hedeflenen dosya bulunamadı. Klasörün içindeki mevcut dosyalar: {files}"
             
-        return "Dosya veya dizin tamamen geçersiz." 
+        return "Dosya veya dizin tamamen geçersiz."

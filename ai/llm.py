@@ -349,20 +349,20 @@ class GhostController:
                 son_adimlar += f"[{rol.upper()}{' - ' + isim if isim else ''}]: {icerik}\n"
 
             critic_prompt = f"""[ELEŞTİRMEN MODU]
-Sen Ghost'un iç denetçisisin (Critic). 
-Görev: Ghost'un kullanıcının isteğini doğru, eksiksiz ve hatasız bir şekilde tamamlayıp tamamlamadığını denetlemek.
+                Sen Ghost'un iç denetçisisin (Critic). 
+                Görev: Ghost'un kullanıcının isteğini doğru, eksiksiz ve hatasız bir şekilde tamamlayıp tamamlamadığını denetlemek.
 
-Kullanıcının İlk İsteği: 
-"{ilk_istek}"
+                Kullanıcının İlk İsteği: 
+                "{ilk_istek}"
 
-Ghost'un Son Adımları ve Ürettiği Nihai Cevap:
-{son_adimlar}
+                Ghost'un Son Adımları ve Ürettiği Nihai Cevap:
+                {son_adimlar}
 
-Kurallar (KESİN İTAAT ET):
-1. Çıktının İLK SATIRI sadece 1 veya 0 rakamı olmak ZORUNDADIR.
-2. Eğer Ghost işlemi eksiksiz ve hatasız tamamlamışsa SADECE 1 yaz ve bitir. Başka hiçbir şey yazma.
-3. Eğer Ghost'un cevabı yanlış, eksik veya hedefe ulaşmamışsa İLK SATIRA 0 yaz. İKİNCİ SATIRA Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
-Asla kod yazma, asla yorum yapma. Sadece 1 veya 0 ile başla."""
+                Kurallar (KESİN İTAAT ET):
+                1. Çıktının İLK SATIRI sadece 1 veya 0 rakamı olmak ZORUNDADIR.
+                2. Eğer Ghost işlemi eksiksiz ve hatasız tamamlamışsa SADECE 1 yaz ve bitir. Başka hiçbir şey yazma.
+                3. Eğer Ghost'un cevabı yanlış, eksik veya hedefe ulaşmamışsa İLK SATIRA 0 yaz. İKİNCİ SATIRA Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
+                Asla kod yazma, asla yorum yapma. Sadece 1 veya 0 ile başla."""
 
             try:
                 # Eleştirmeni kendi supervisor objesi ile ama tools olmadan çağır.
