@@ -358,24 +358,33 @@ Kullanıcının İlk İsteği:
 Ghost'un Son Adımları ve Ürettiği Nihai Cevap:
 {son_adimlar}
 
-Kurallar:
-1. Eğer Ghost kullanıcının isteğini tam anlamıyla, hatasız ve doğru tamamlamışsa SADECE "BAŞARILI" yaz. Başka hiçbir şey yazma.
-2. Eğer Ghost'un cevabı yanlış, eksik, halüsinasyon içeriyorsa veya hedefe ulaşmadan pes etmişse, "EKSİK:" diyerek Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
-Asla kod yazma, sadece eleştirini belirt."""
+Kurallar (KESİN İTAAT ET):
+1. Çıktının İLK SATIRI sadece 1 veya 0 rakamı olmak ZORUNDADIR.
+2. Eğer Ghost işlemi eksiksiz ve hatasız tamamlamışsa SADECE 1 yaz ve bitir. Başka hiçbir şey yazma.
+3. Eğer Ghost'un cevabı yanlış, eksik veya hedefe ulaşmamışsa İLK SATIRA 0 yaz. İKİNCİ SATIRA Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
+Asla kod yazma, asla yorum yapma. Sadece 1 veya 0 ile başla."""
 
             try:
                 # Eleştirmeni kendi supervisor objesi ile ama tools olmadan çağır.
                 msg = self.supervisor._raw_call([{"role": "user", "content": critic_prompt}], tools=None)
                 degerlendirme = msg.get("content", "").strip()
                 
-                if degerlendirme.startswith("BAŞARILI"):
+                # Güvenlik için ilk satırı (veya ilk harfi) kontrol et
+                ilk_satir = degerlendirme.split("\n")[0].strip()
+                
+                if "1" in ilk_satir:
                     return {"messages": []}
                 else:
+                    # 0 durumunda açıklama alt satırlardadır
+                    hata_nedeni = "\n".join(degerlendirme.split("\n")[1:]).strip()
+                    if not hata_nedeni:
+                        hata_nedeni = degerlendirme # Eğer her şeyi tek satıra yazdıysa
+                        
                     # Modelin eleştiriyi bir sistem veya araç çıktısı gibi alıp düzeltebilmesi için user mesajı veriyoruz
                     return {
                         "messages": [{
                             "role": "user", 
-                            "content": f"[SİSTEM ELEŞTİRMENİ UYARISI]: Cevabın veya eylemin yetersiz bulundu. Lütfen şu eleştiriye göre işlemini düzelt ve tekrar dene:\n{degerlendirme}"
+                            "content": f"[SİSTEM ELEŞTİRMENİ UYARISI]: Cevabın veya eylemin yetersiz bulundu. Lütfen şu eleştiriye göre işlemini düzelt ve tekrar dene:\n{hata_nedeni}"
                         }]
                     }
             except Exception as e:
