@@ -202,15 +202,6 @@ class GhostOperatorUI(ctk.CTk):
                 self.log_text.see("end")
         self.after(0, _write)
 
-    def log_collapsible_plan(self, adimlar: list):
-        # PLANLARI EKRANDA GİZLE/GÖSTER YAPMAK YERİNE DOĞRUDAN TERMİNALE BASIYORUZ
-        print("\n" + "="*40)
-        print("🛠️ OPERASYON PLANI:")
-        for i, adim in enumerate(adimlar, 1):
-            prefix = "   └─" if i == len(adimlar) else "   ├─"
-            print(f"{prefix} Adım {i}: {adim}")
-        print("="*40 + "\n")
-        
     # ── Arayüzü ayaralar ────────────────────────────────────────    
     def set_model_label(self, text: str, color: str = "#888888"):
         def update_label():

@@ -181,6 +181,13 @@ class GhostController:
         self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
         self.tool_runner = tool_runner
 
+        # Bir turun (görev tamamlandı / sohbet cevabı / recursion limit'e
+        # çarpıp vazgeçildi — hepsi dahil) KESİN olarak bittiği tek an burası.
+        # command_handler.py bunu aktif_plan'ı sıfırlamak için kullanıyor —
+        # eskiden bu reset 'gorev_bitti'nin _execute_tool_call'dan geçtiği
+        # varsayımıyla yanlış yerde yapılıyordu, hiç tetiklenmiyordu.
+        self.on_task_end = None
+
         self.graph = self._build_graph()
 
     def yol_duzelt(self, yol):
@@ -471,6 +478,14 @@ class GhostController:
                 nihai_cevap = f"[Sistem Hatası] Limit aşımı sonrasında açıklama üretilemedi: {e}"
 
         model_name = "Qwen 480B (Mühendis Kodladı)" if kod_yazildi_mi else "GPT-OSS 120B (Yönetici)"
+
+        # Tur burada KESİN olarak bitti (başarı/limit aşımı/sohbet fark etmez).
+        # command_handler.py bunu aktif_plan'ı sıfırlamak için kullanıyor.
+        if self.on_task_end:
+            try:
+                self.on_task_end()
+            except Exception as e:
+                print(f"[SİSTEM UYARISI] on_task_end callback hatası: {e}")
 
         return nihai_cevap.strip() if nihai_cevap else "...", model_name
 

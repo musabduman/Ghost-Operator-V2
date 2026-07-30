@@ -29,9 +29,11 @@ class LibrarianAgent:
         
         JSON Format Şeması:
         [
-          {"action": "save", "fact": "Kaydedilecek kalıcı bilgi özeti"},
-          {"action": "update", "old_fact_query": "Eski bilgiyi bulmak için vektör DB sorgusu", "new_fact": "Yeni kalıcı bilgi özeti"}
+          {"action": "save", "fact": "Kaydedilecek kalıcı bilgi özeti", "confidence": 0.9},
+          {"action": "update", "old_fact_query": "Eski bilgiyi bulmak için vektör DB sorgusu", "new_fact": "Yeni kalıcı bilgi özeti", "confidence": 0.8}
         ]
+        
+        NOT: confidence değeri 0.0 ile 1.0 arasında bir güven skorudur. Bu bilginin ne kadar kesin ve kalıcı olduğuna dair eminlik dereceni yansıtır.
         
         Eğer kaydedilecek hiçbir bilgi yoksa sadece boş bir liste döndür: []
         
@@ -44,7 +46,7 @@ class LibrarianAgent:
         
         Örnek çıktı:
         [
-          {"action": "save", "fact": "Kullanıcının en sevdiği renk kırmızıdır."}
+          {"action": "save", "fact": "Kullanıcının en sevdiği renk kırmızıdır.", "confidence": 1.0}
         ]
         
         Örnek girdi 2:
@@ -56,7 +58,7 @@ class LibrarianAgent:
         
         Örnek çıktı 2:
         [
-          {"action": "update", "old_fact_query": "Kullanıcının en sevdiği renk", "new_fact": "Kullanıcının en sevdiği renk mavidir."}
+          {"action": "update", "old_fact_query": "Kullanıcının en sevdiği renk", "new_fact": "Kullanıcının en sevdiği renk mavidir.", "confidence": 0.95}
         ]
         
         Şimdi analiz et:
@@ -136,26 +138,51 @@ class LibrarianAgent:
                 islemler = json.loads(raw_content)
                 for islem in islemler:
                     action = islem.get("action")
+                    try:
+                        confidence = float(islem.get("confidence", 1.0))
+                    except (ValueError, TypeError):
+                        confidence = 1.0
+                        
                     if action == "save":
                         fact = islem.get("fact")
                         if fact:
                             # Aynı bilginin mükerrer kaydedilmesini engelle
-                            if self.bellek.benzerini_bul(fact) is None:
-                                self.bellek.bellege_yaz(fact)
+                            benzer = self.bellek.benzerini_bul_metadata_ile(fact)
+                            if benzer is None:
+                                metadata = {"created_at": time.time(), "confidence": confidence, "confirmation_count": 1}
+                                self.bellek.bellege_yaz(fact, metadata=metadata)
                                 print(f"[KÜTÜPHANECİ]: Yeni bilgi RAG belleğine eklendi -> {fact}")
+                            else:
+                                # Bilgi zaten var, confirmation_count'u artırarak güçlendir
+                                old_meta = benzer["metadata"]
+                                new_count = int(old_meta.get("confirmation_count", 1)) + 1
+                                old_meta["confirmation_count"] = new_count
+                                # Upsert ile aynı ID'nin metadatasını güncelle
+                                self.bellek.bellege_yaz(benzer["document"], metadata=old_meta)
+                                print(f"[KÜTÜPHANECİ]: Mevcut bilgi doğrulandı ve güçlendirildi (x{new_count}) -> {benzer['document']}")
+                                
                     elif action == "update":
                         old_query = islem.get("old_fact_query")
                         new_fact = islem.get("new_fact")
                         if old_query and new_fact:
                             # Vektör DB'de eski bilgiyi arat
-                            eski_kayitlar = self.bellek.sorgula(old_query, limit=1)
+                            eski_kayitlar = self.bellek.sorgula_metadata_ile(old_query, limit=1)
                             if eski_kayitlar:
                                 eski_kayit = eski_kayitlar[0]
-                                self.bellek.bellekten_sil(eski_kayit)
-                                print(f"[KÜTÜPHANECİ]: Eski çelişkili bilgi silindi -> {eski_kayit}")
+                                old_meta = eski_kayit["metadata"]
+                                confirmations = int(old_meta.get("confirmation_count", 1))
+                                
+                                # Çelişki / Halüsinasyon koruması
+                                if confirmations >= 3 and confidence < 0.8:
+                                    print(f"[KÜTÜPHANECİ UYARISI]: Güncelleme REDDEDİLDİ. Eski bilgi çok güçlü (x{confirmations}), yeni bilgi zayıf (G: {confidence}). -> {new_fact}")
+                                    continue
+                                
+                                self.bellek.bellekten_sil(eski_kayit["document"])
+                                print(f"[KÜTÜPHANECİ]: Eski çelişkili bilgi silindi -> {eski_kayit['document']}")
                             
                             # Yeni bilgiyi yaz
-                            self.bellek.bellege_yaz(new_fact)
+                            metadata = {"created_at": time.time(), "confidence": confidence, "confirmation_count": 1}
+                            self.bellek.bellege_yaz(new_fact, metadata=metadata)
                             print(f"[KÜTÜPHANECİ]: Güncel bilgi RAG belleğine eklendi -> {new_fact}")
             except Exception as parse_error:
                 print(f"[KÜTÜPHANECİ HATA]: JSON parse hatası. Ham yanıt: {raw_content} | Hata: {parse_error}")
