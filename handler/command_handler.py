@@ -56,7 +56,11 @@ class CommandHandler:
         self.son_komut_sesli = False
         self.bellek = Bellek()
         self.episodic_db = EpisodicDB()
-        self.controller = GhostController(tool_runner=self._execute_tool_call)        
+        self.controller = GhostController(tool_runner=self._execute_tool_call)
+        # gorev_bitti asla _execute_tool_call'dan geçmediği için aktif_plan'ı
+        # sıfırlamanın tek güvenilir yeri: GhostController'ın her turu
+        # (başarılı/başarısız/limit aşımı fark etmez) kesin olarak bitirdiği an.
+        self.controller.on_task_end = self.gorevi_sonlandir
         self.spotify = SpotifyManager()
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
@@ -278,15 +282,19 @@ class CommandHandler:
         otomatik parametre dizilimi ve yol çözümü ile çalıştırılır."""
         try:
             result = tool_registry.execute(isim, args, self)
-            success = not str(result).startswith("Bilinmeyen araç") and not str(result).startswith("Araç çalışırken çöktü")
+            success = self._sonuc_basarili_mi(result)
 
             # Eğer bir plan aktifse ve bu araç plan yapma aracı değilse, sonuca hatırlatma ekle
             if self.aktif_plan and isim not in ["uzun_gorev_plani_yap", "gorev_bitti"]:
                 hedef = self.aktif_plan["hedef"]
                 result = f"{result}\n\n[SİSTEM HATIRLATMASI: Şu an '{hedef}' hedefine yönelik uzun görev planını yürütüyorsun. Planına sadık kal ve işin bittiyse sıradaki adıma geç. Tüm plan bittiyse gorev_bitti çağır.]"
-                
-            if isim == "gorev_bitti":
-                self.aktif_plan = None # Görev bittiyse planı sıfırla
+
+            # NOT: 'gorev_bitti' bu fonksiyondan HİÇ geçmez (yonlendirici onu
+            # doğrudan critic/END'e yönlendirir, "tools" node'una uğramaz).
+            # Bu yüzden plan sıfırlama artık burada değil, GhostController
+            # tarafında her _raw_supervisor_call bitişinde (on_task_end) yapılıyor.
+            # (Eskiden burada "if isim == 'gorev_bitti': self.aktif_plan = None"
+            # vardı ama hiç çalışmayan ölü koddu — bkz. handle_task_end.)
 
         except Exception as e:
             result = f"Araç çalışırken çöktü: {str(e)}"
@@ -315,6 +323,42 @@ class CommandHandler:
         if proje_notu:
             donen_metin += f"\n\n{proje_notu}"
         return donen_metin
+
+    @staticmethod
+    def _sonuc_basarili_mi(result) -> bool:
+        """
+        Bir tool sonucunun gerçekten başarılı mı yoksa hata mesajı mı
+        olduğunu anlamaya çalışır. NOT: Bu hâlâ string-önekine dayalı,
+        yani KIRILGAN bir sezgi — kod tabanındaki araçların (whatsapp_tool,
+        browser_tool vb.) çoğu exception fırlatmak yerine "HATA: ..." diye
+        başlayan bir string döndürüyor, exception fırlatmıyor. Kalıcı ve
+        sağlam çözüm tool_registry.execute()'un (result, success) şeklinde
+        yapılandırılmış bir tuple döndürmesi olurdu — registry dosyasını
+        görünce onu da düzeltelim.
+        """
+        sonuc_str = str(result).strip()
+        if sonuc_str.startswith("Bilinmeyen araç"):
+            return False
+        if sonuc_str.startswith("Araç çalışırken çöktü"):
+            return False
+        # Kod tabanında hata mesajları tutarsız şekilde "HATA:", "Hata:",
+        # "[SİSTEM HATA]" gibi çeşitli öneklerle dönüyor — hepsini yakala.
+        if sonuc_str.lower().startswith("hata") or sonuc_str.startswith("[SİSTEM HATA"):
+            return False
+        return True
+
+    def gorevi_sonlandir(self):
+        """
+        GhostController her _raw_supervisor_call bitiminde (görev tamamlandı,
+        sohbet cevabı döndü ya da recursion limit'e çarpıp vazgeçti — hepsinde)
+        bunu çağırır. Eskiden aktif_plan sıfırlaması _execute_tool_call içinde
+        'gorev_bitti' geldiğinde yapılıyordu ama gorev_bitti o fonksiyona HİÇ
+        uğramıyor (yonlendirici onu doğrudan critic/END'e yönlendiriyor), yani
+        o satır hiç çalışmıyordu ve aktif_plan bir kere set edildikten sonra
+        uygulama kapanana kadar HER gelecek göreve sızıyordu. Artık üst
+        seviyede, her turun kesin olarak bittiği tek yerde sıfırlanıyor.
+        """
+        self.aktif_plan = None
 
     def _proje_durumu_guncelle(self, isim: str, args: dict) -> str:
         """
