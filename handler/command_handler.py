@@ -479,10 +479,10 @@ class CommandHandler:
         except Exception as e:
             pass
 
-    def _tool_browser_click(self, url: str, hedef_metin: str) -> str:
-        self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine tıklanıyor...", "green")
+    def _tool_browser_click(self, url: str, hedef: str) -> str:
+        self.app.log(f"SİSTEM: '{url}' adresinde '{hedef}' öğesine tıklanıyor...", "green")
         from tools.browser_tool import browser_interact
-        return browser_interact(url, "tikla", hedef_metin)
+        return browser_interact(url, "tikla", hedef)
     
     def _tool_read_website(self, url: str) -> str:
         self.app.log(f"SİSTEM: '{url}' içeriği (metin olarak) okunuyor...", "green")
@@ -508,10 +508,10 @@ class CommandHandler:
         plan_str = "\n".join(f"{i+1}. {a}" for i, a in enumerate(adimlar))
         return f"Plan başarıyla kaydedildi. HEDEF: {hedef}\nADIMLAR:\n{plan_str}\nLütfen şimdi araçlarını kullanarak 1. adımdan uygulamaya başla."
 
-    def _tool_browser_type(self, url: str, hedef_metin: str, yazi_icerigi: str) -> str:
-        self.app.log(f"SİSTEM: '{url}' adresinde '{hedef_metin}' öğesine '{yazi_icerigi}' yazılıyor...", "green")
+    def _tool_browser_type(self, url: str, kutu: str, metin: str) -> str:
+        self.app.log(f"SİSTEM: '{url}' adresinde '{kutu}' öğesine '{metin}' yazılıyor...", "green")
         from tools.browser_tool import browser_interact
-        return browser_interact(url, "yaz", hedef_metin, yazi_icerigi)
+        return browser_interact(url, "yaz", kutu, metin)
 
     def _tool_browser_observe(self, hedef: str) -> str:
         hedef = hedef.lower().strip()
@@ -613,8 +613,8 @@ class CommandHandler:
     def _tool_mission_complete(self, nihai_cevap: str) -> str:
         return f"GÖREV_TAMAMLANDI_SİNYALİ: {nihai_cevap}"
     
-    def _tool_take_screenshot(self, soru: str) -> str:
-        self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{soru}'", "green")
+    def _tool_take_screenshot(self, ne_arayacagim: str) -> str:
+        self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{ne_arayacagim}'", "green")
         kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_auto_screenshot.png")
         
         try:
@@ -630,7 +630,7 @@ class CommandHandler:
             self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
 
             from vison.vison import minimax_vision_analiz
-            basarili_mi, saf_kod, mesaj = minimax_vision_analiz(soru, kayit_yolu)
+            basarili_mi, saf_kod, mesaj = minimax_vision_analiz(ne_arayacagim, kayit_yolu)
             
             if basarili_mi and saf_kod:
                 return f"GÖZLEM SONUCU: Ekranda şu kod bulundu:\n\n{saf_kod}\n\nLütfen Kullanıcının asıl isteğine göre bu kodu kullanarak işlem yap."
@@ -641,16 +641,16 @@ class CommandHandler:
             self.app.deiconify()
             return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
         
-    def _tool_search(self, query: str) -> str:
-        self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{query}'...", "green")
+    def _tool_search(self, sorgu: str) -> str:
+        self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{sorgu}'...", "green")
         from tools.google_tool import search_duckduckgo, _format_results
         
         try:
-            ddg_results = search_duckduckgo(query)
+            ddg_results = search_duckduckgo(sorgu)
             formatted = _format_results(ddg_results)
             
             if formatted:
-                return (f"DuckDuckGo Arama Sonuçları ('{query}'):\n\n{formatted}\n\n"
+                return (f"DuckDuckGo Arama Sonuçları ('{sorgu}'):\n\n{formatted}\n\n"
                     f"[GİZLİ SİSTEM TALİMATI: Aradığın cevabı (örneğin playlist adı, maç skoru) bu özetlerde bulduysan, "
                     f"başka bir siteye girmeden DOĞRUDAN ilgili aracı (örneğin [PLAYLIST_AÇ: ...], [UYGULAMA_AC: ...]) "
                     f"kullan. Eğer detaylı bir makale okuman ŞART ise [SİTE_OKU: <url>] kullan.]")
@@ -663,7 +663,7 @@ class CommandHandler:
             
             from tools.browser_tool import browser_google_search
             try:
-                arama_sonuclari = browser_google_search(query)
+                arama_sonuclari = browser_google_search(sorgu)
                 if "başarısız oldu" in arama_sonuclari or "çekilemedi" in arama_sonuclari:
                     raise Exception("Tarayıcı metin çekemedi.")
                 
@@ -674,7 +674,7 @@ class CommandHandler:
             
             except Exception as e2:
                 self.app.log("SİSTEM HATA: Tarayıcı DOM'u çöktü. Plan C (LLaVA Görsel) başlıyor...", "yellow")
-                return self._visual_search_fallback(query)
+                return self._visual_search_fallback(sorgu)
    
     def _visual_search_fallback(self, query: str) -> str:
         import urllib.parse
@@ -736,13 +736,13 @@ class CommandHandler:
             f"Son Görev Özeti: {durum['son_gorev_ozeti']}"
         )
 
-    def _tool_open_folder(self, path: str) -> str:
-        if os.path.exists(path):
-            os.startfile(path)
-            self.app.log(f"SİSTEM: '{path}' açıldı.", "green")
-            return f"'{path}' klasörü başarıyla açıldı."
+    def _tool_open_folder(self, yol: str) -> str:
+        if os.path.exists(yol):
+            os.startfile(yol)
+            self.app.log(f"SİSTEM: '{yol}' açıldı.", "green")
+            return f"'{yol}' klasörü başarıyla açıldı."
         
-        real = derin_arama(path)
+        real = derin_arama(yol)
         if real:
             os.startfile(real)
             self.app.log(f"SİSTEM: Bulundu → {real}", "green")
@@ -750,9 +750,9 @@ class CommandHandler:
             
         return "Klasör bulunamadı."
     
-    def _tool_open_app(self, name: str) -> str:
-        name = name.lower()
-        self.app.log(f"SİSTEM: '{name}' başlatılıyor...", "green")
+    def _tool_open_app(self, isim: str) -> str:
+        isim = isim.lower()
+        self.app.log(f"SİSTEM: '{isim}' başlatılıyor...", "green")
         
         if sys.platform.startswith("win"):
             SPECIAL = {
@@ -760,14 +760,14 @@ class CommandHandler:
                 "discord": (os.path.expanduser(r"~\AppData\Local\Discord\Update.exe") ,["--processStart", "Discord.exe"]),
                 "whatsapp": "whatsapp://"
             }
-            if name in SPECIAL:
-                app = SPECIAL[name]
+            if isim in SPECIAL:
+                app = SPECIAL[isim]
                 if isinstance(app, tuple):
                     subprocess.Popen([app[0]] + app[1])
                 else:
                     os.startfile(app)
             else:
-                os.system(f"start {name}")
+                os.system(f"start {isim}")
                 
         elif sys.platform.startswith("linux"):
             SPECIAL = {
@@ -775,15 +775,15 @@ class CommandHandler:
                 "discord": "discord",
                 "whatsapp": "whatsapp-for-linux"
             }
-            komut = SPECIAL.get(name, name)
+            komut = SPECIAL.get(isim, isim)
             os.system(f"nohup {komut} >/dev/null 2>&1 &")
             
-        return f"'{name}' uygulaması başlatıldı komutu verildi."
+        return f"'{isim}' uygulaması başlatıldı komutu verildi."
 
-    def _tool_play_song(self, song: str) -> str:
-        self.app.log(f"SİSTEM: Spotify'da '{song}' aranıyor...", "green")
+    def _tool_play_song(self, sarki: str) -> str:
+        self.app.log(f"SİSTEM: Spotify'da '{sarki}' aranıyor...", "green")
         try:
-            result = self.spotify.play_specific_song(song)
+            result = self.spotify.play_specific_song(sarki)
             return f"Spotify Sonucu: {result}"
 
         except spotipy.exceptions.SpotifyException as e:
@@ -799,7 +799,7 @@ class CommandHandler:
                                 "BAŞKA BİR ŞARKI DENEME. Patron'a Spotify uygulamasını açıp bir şeye tıklamasını "
                                 "söyleyerek [GOREV_BITTI: ...] ile işlemi hemen sonlandır.]")
                     time.sleep(1.5)
-                    result = self.spotify.play_specific_song(song)
+                    result = self.spotify.play_specific_song(sarki)
                     return f"Spotify Sonucu (cihaz uyandırıldıktan sonra): {result}"
                 except Exception as e2:
                     return (f"HATA: Cihaz uyandırılamadı: {e2}. "
@@ -810,46 +810,46 @@ class CommandHandler:
                     f"[ÖLÜMCÜL SİSTEM TALİMATI: Başka bir şarkı deneme, sorun teknik. "
                     f"[GOREV_BITTI: Patron, Spotify'da teknik bir sorun oluştu.] kullan.]")
         
-    def _tool_play_playlist(self, playlist: str) -> str:
-        self.app.log(f"SİSTEM: '{playlist}' listesi aranıyor...", "green")
-        result = self.spotify.play_playlist(playlist)
+    def _tool_play_playlist(self, liste: str) -> str:
+        self.app.log(f"SİSTEM: '{liste}' listesi aranıyor...", "green")
+        result = self.spotify.play_playlist(liste)
         return f"Spotify Sonucu: {result}"
 
-    def _tool_save_note(self, note: str) -> str:
-        self.bellek.bellege_yaz(note)
-        self.app.log(f"SİSTEM: Beyne kazındı → '{note}'", "green")
+    def _tool_save_note(self, bilgi: str) -> str:
+        self.bellek.bellege_yaz(bilgi)
+        self.app.log(f"SİSTEM: Beyne kazındı → '{bilgi}'", "green")
         return "Not başarıyla belleğe kaydedildi."
 
-    def _tool_make_folder(self, path: str) -> str:
-        os.makedirs(path, exist_ok=True)
-        self.app.log(f"SİSTEM: Klasör oluşturuldu → {path}", "green")
-        return f"'{path}' dizininde klasör başarıyla oluşturuldu."
+    def _tool_make_folder(self, yol: str) -> str:
+        os.makedirs(yol, exist_ok=True)
+        self.app.log(f"SİSTEM: Klasör oluşturuldu → {yol}", "green")
+        return f"'{yol}' dizininde klasör başarıyla oluşturuldu."
 
-    def _tool_inspect_folder(self, path: str) -> str:
-        if os.path.isdir(path):
-            files = ", ".join(os.listdir(path)) or "Klasör boş."
-            self.app.log(f"SİSTEM: Klasör tarandı → {path}", "green")
+    def _tool_inspect_folder(self, yol: str) -> str:
+        if os.path.isdir(yol):
+            files = ", ".join(os.listdir(yol)) or "Klasör boş."
+            self.app.log(f"SİSTEM: Klasör tarandı → {yol}", "green")
             return f"Klasör İçeriği: {files}"
         return "Belirtilen yol bir klasör değil veya bulunamadı."
 
-    def _tool_write_file(self, path: str, code: str) -> str:
+    def _tool_write_file(self, yol: str, icerik: str) -> str:
         # Göreceli yol ya da sadece dosya adı verilmişse → tools/ klasörüne yönlendir
         # Mutlak yol verilmişse (C:\... gibi) dokunma
-        if not os.path.isabs(path):
+        if not os.path.isabs(yol):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            path = os.path.join(base_dir, "tools", path)
+            yol = os.path.join(base_dir, "tools", yol)
 
-        folder = os.path.dirname(path)
+        folder = os.path.dirname(yol)
         if folder:
             os.makedirs(folder, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(code)
-        self.app.log(f"SİSTEM: Dosya yazıldı → {path}", "green")
-        return f"Kod başarıyla '{path}' konumuna kaydedildi."
+        with open(yol, "w", encoding="utf-8") as f:
+            f.write(icerik)
+        self.app.log(f"SİSTEM: Dosya yazıldı → {yol}", "green")
+        return f"Kod başarıyla '{yol}' konumuna kaydedildi."
 
-    def _tool_run_code(self, path: str) -> str:
-        self.app.log(f"SİSTEM: '{path}' çalıştırılıyor...", "green")
-        result = kodu_calistir(path)
+    def _tool_run_code(self, yol: str) -> str:
+        self.app.log(f"SİSTEM: '{yol}' çalıştırılıyor...", "green")
+        result = kodu_calistir(yol)
         if result["basarili"]:
             self.app.log(f"SİSTEM ✅ Başarılı:\n{result['cikti'][:100]}...", "green")
             return f"Kod başarıyla çalıştı. Çıktı:\n{result['cikti']}"
@@ -857,13 +857,13 @@ class CommandHandler:
         self.app.log("SİSTEM ⚠️ Hata tespit edildi...", "red")
         return f"Kod çalıştırılırken hata verdi. Lütfen hatayı inceleyip düzelt:\n{result['hata']}"
 
-    def _tool_read_file(self, path: str) -> str:
-        if os.path.isfile(path):
-            content = open(path, encoding="utf-8").read()
-            self.app.log(f"SİSTEM: '{path}' okundu.", "green")
+    def _tool_read_file(self, yol: str) -> str:
+        if os.path.isfile(yol):
+            content = open(yol, encoding="utf-8").read()
+            self.app.log(f"SİSTEM: '{yol}' okundu.", "green")
             return f"Dosya İçeriği:\n{content}"
             
-        folder = os.path.dirname(path)
+        folder = os.path.dirname(yol)
         if os.path.isdir(folder):
             files = ", ".join(os.listdir(folder)) or "Klasör boş."
             return f"Hedeflenen dosya bulunamadı. Klasörün içindeki mevcut dosyalar: {files}"

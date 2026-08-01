@@ -108,7 +108,16 @@ class ToolRegistry:
                 val = akilli_yol_cozucu(val)
             call_kwargs[arg_name] = val
 
-        return func(**call_kwargs)
+        # ÖNEMLİ: keyword değil POZİSYONEL çağırıyoruz. Şemadaki parametre adı
+        # (örn. "yol") ile handler'ın Python parametre adı (örn. "path")
+        # farklı olabiliyor - func(**call_kwargs) bunu sessizce kırıyordu
+        # (14 araç etkilenmişti: arama, klasor_ac, uygulama_ac, sarki_ac,
+        # playlist_ac, not_al, klasor_yap, klasor_incele, kodu_calistir,
+        # dosya_oku, dosya_yaz, tarayici_tikla, tarayici_yaz, ekran_goruntusu).
+        # Pozisyonel çağrı, handler parametrelerinin şemadaki sırayla
+        # tanımlandığı sürece isim farkını önemsiz kılıyor.
+        ordered_vals = [call_kwargs[a] for a in arg_names]
+        return func(*ordered_vals)
 
 
 # Global singleton registry nesnesi
