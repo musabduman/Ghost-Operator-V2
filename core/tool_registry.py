@@ -266,6 +266,12 @@ ghost_tool(
 )(None)
 
 ghost_tool(
+    name="telegram_mesaj_gonder",
+    description="Patron'a Telegram üzerinden mesaj gönderir. Patron'un en son Telegram'dan yazdığı sohbete cevap yazmak için SADECE bunu kullan (Patron uzaktaysa ve UI'dan değil Telegram'dan konuşuyorsa geçerlidir).",
+    params={"mesaj": ("string", "Gönderilecek mesaj metni")},
+)(None)
+
+ghost_tool(
     name="araclari_listele",
     description="tools/ klasöründeki tüm dosyalardaki fonksiyonları, parametrelerini ve açıklamalarını listeler.",
     params={},

@@ -10,7 +10,9 @@ import pygame
 from ai.konus import GhostSpeech
 from hafıza.rag_hafıza import Bellek
 from kontrol.spotify import SpotifyManager
+from core.tool_registry import tool_registry
 from ai.librarian_agent import LibrarianAgent
+from tools.telegram_tool import TelegramBridge
 from handler.voice_handler import VoiceHandler
 from handler.command_handler import CommandHandler
 from uyandırma.signal_watcher import SignalWatcher
@@ -48,6 +50,15 @@ class GhostOperatorUI(ctk.CTk):
         self.voice_handler   = VoiceHandler(self)
         self.signal_watcher  = SignalWatcher(self)
         self.librarian       = LibrarianAgent()
+
+        # ── Telegram köprüsü ──────────────────────────────────────────────────
+        # Sadece burada instance oluşturuyoruz, gerçek polling _startup_sequence'ta
+        # başlıyor (UI hazır olmadan self.after() çağırmak anlamsız).
+        self.telegram_bridge = TelegramBridge(ui_callback=self._telegram_mesaji_isle)
+        tool_registry.bind_handler(
+            "telegram_mesaj_gonder",
+            lambda mesaj: self.telegram_bridge.mesaj_gonder(mesaj)
+        )
 
         # ── Pencere + UI ──────────────────────────────────────────────────────
         self._setup_window()
@@ -133,12 +144,19 @@ class GhostOperatorUI(ctk.CTk):
         self._save_current_session()
         self.current_session_id = new_session_id()
         self._messages = []
+        
+        if hasattr(self, "command_handler") and hasattr(self.command_handler.controller,"supervisor"):
+            self.command_handler.controller.supervisor.load_history(self._messages)
+            
         if self._expanded:
             # Sidebar'ı yenile, chat alanını temizle
             from ui.expanded_ui import _populate_sessions
             _populate_sessions(self, self.session_list_frame)
-            for widget in self.chat_scroll.winfo_children():
-                widget.destroy()
+            if hasattr(self, "_chat_bubbles"):
+                for widget in self._chat_bubbles:
+                    if widget.winfo_exists():
+                        widget.destroy()
+                self._chat_bubbles.clear()
         else:
             # Compact modda log_text widget'ı yok, sadece konsola bildir
             print("[SİSTEM]: Yeni oturum başlatıldı.")
@@ -156,8 +174,11 @@ class GhostOperatorUI(ctk.CTk):
         if self._expanded:
             from ui.expanded_ui import _populate_sessions
             _populate_sessions(self, self.session_list_frame)
-            for widget in self.chat_scroll.winfo_children():
-                widget.destroy()
+            if hasattr(self, "_chat_bubbles"):
+                for widget in self._chat_bubbles:
+                    if widget.winfo_exists():
+                        widget.destroy()
+                self._chat_bubbles.clear()
             for m in self._messages:
                 append_chat_bubble(self, m["role"], m["text"])
 
@@ -225,7 +246,31 @@ class GhostOperatorUI(ctk.CTk):
         self.log("[SİSTEM]: Uyanış protokolü başlatıldı...", "green")
         self.set_model_label("Aktif Durum: Sistem Uyanıyor...")
         self.librarian.start()  # Kütüphaneci döngüsünü başlat
+        self.telegram_bridge.start_in_background()  # Telegram dinlemeyi başlat
         threading.Thread(target=self.command_handler.run_startup, daemon=True).start()
+
+    # ── Telegram köprüsü ──────────────────────────────────────────────────────
+
+    def _telegram_mesaji_isle(self, text: str, user: str, chat_id: int):
+        """
+        TelegramBridge, ayrı bir thread'den bunu çağırır. Tkinter thread-safe
+        olmadığı için UI'ya dokunan her şey self.after(0, ...) ile ana thread'e
+        gönderiliyor. Asıl işleme (GhostController çağrısı) ağ isteği yaptığı
+        için burada, bu arka plan thread'inde kalıyor — UI'yı dondurmaz.
+        """
+        self.after(0, lambda: self.record_message("user", f"[Telegram/{user}]: {text}"))
+
+        try:
+            cevap, _ = self.command_handler.controller(text)
+        except Exception as e:
+            cevap = f"[Hata] Telegram mesajı işlenirken bir sorun oluştu: {e}"
+
+        self.after(0, lambda: self.record_message("ghost", cevap))
+
+        try:
+            self.telegram_bridge.mesaj_gonder(cevap, chat_id=chat_id)
+        except Exception as e:
+            print(f"[SİSTEM UYARISI] Telegram cevabı gönderilemedi: {e}")
 
     # ── Lock & Kapatma ────────────────────────────────────────────────────────
 

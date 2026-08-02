@@ -4,7 +4,12 @@ import platform
 import operator
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
+from dotenv import load_dotenv
 import requests
+
+# apı_key.env dosyasını oku
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apı_key.env")
+load_dotenv(env_path)
 
 # 1. ORTAK BİLİNÇ (State)
 class GhostState(TypedDict):
@@ -16,6 +21,8 @@ class GhostState(TypedDict):
 
 
 from core.tool_registry import tool_registry
+from hafıza.proje_kod_bellek import ProjeKodBellek
+from hafıza.episodic_db import EpisodicDB
 
 # ── JSON TOOL ŞEMASI (Single Source of Truth - tool_registry) ───────────────
 TOOLS = tool_registry.get_schemas()
@@ -95,7 +102,8 @@ class ChatLLM(BaseLLM):
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
         for msg in gecmis_mesajlar:
             role = msg.get("role") if msg.get("role") in ("assistant", "tool", "user") else "user"
-            temiz_msg = {"role": role, "content": msg.get("content", "")}
+            content = msg.get("content") or msg.get("text") or ""
+            temiz_msg = {"role": role, "content": content}
             if msg.get("tool_calls"):
                 temiz_msg["tool_calls"] = msg["tool_calls"]
             self.mesaj_gecmisi.append(temiz_msg)
@@ -118,11 +126,13 @@ class ChatLLM(BaseLLM):
         return response.json()["message"]
 
 
-# 2. İŞÇİ BEYİN (değişmedi — Qwen zaten tool calling kullanmıyor, saf kod üretiyor)
+# 2. İŞÇİ BEYİN (artık NVIDIA Build/NIM üzerinden çalışıyor — Ollama'daki
+# qwen3-coder:480b-cloud kaldırıldığı için OpenAI-uyumlu NIM endpoint'ine geçildi)
 class QwenWorker:
-    def __init__(self, model="qwen3-coder:480b-cloud"):
+    def __init__(self, model="deepseek-ai/deepseek-v3.2", api_key=None):
         self.model = model
-        self.api_url = "http://localhost:11434/api/chat"
+        self.api_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        self.api_key = api_key or os.getenv("NVIDIA_API_KEY")
         self.os_name = platform.system()
 
         self.isci_kurallari = f"""
@@ -140,12 +150,21 @@ class QwenWorker:
         3. EKSİKSİZ BÜTÜNLÜK (KRİTİK): Eğer sana 'MEVCUT KOD' verilmişse ve bir güncelleme isteniyorsa, kodun GÜNCELLENMİŞ TAM HALİNİ döndürmek zorundasın. Asla "# ... geri kalan kodlar aynı kalacak ..." şeklinde tembelce kısaltmalar (placeholder) KULLANMA. Dosyayı bozarsın.
         4. İÇERİKLER: Gerekli kütüphaneleri (import) eklemeyi unutma. Girintilere (indentation) kesinlikle dikkat et.
 
+        [PROJE BAĞLAMI]
+        Bazen sana "PROJEDE MEVCUT İLGİLİ SEMBOLLER" başlığı altında, projede zaten var olan
+        fonksiyon/class imzaları verilecek. Bunlar referans amaçlıdır: aynı işi yapan bir
+        fonksiyonu tekrar yazma, mümkünse import edip çağır; isimlendirmede projenin
+        kendi konvansiyonuna uy. Bu liste sadece bilgi amaçlıdır, MEVCUT KOD değildir.
+
         [SÜREÇ]
-        Sana sadece "TALİMAT" ve varsa "MEVCUT KOD" verilecek. Derhal nihai kodu yaz. Başla.
+        Sana "TALİMAT", varsa "PROJEDE MEVCUT İLGİLİ SEMBOLLER" ve varsa "MEVCUT KOD" verilecek.
+        Derhal nihai kodu yaz. Başla.
         """
 
-    def saf_kod_uret(self, talimat, mevcut_kod=""):
+    def saf_kod_uret(self, talimat, mevcut_kod="", ek_baglam=""):
         istek = f"TALİMAT: {talimat}\n\n"
+        if ek_baglam:
+            istek += f"{ek_baglam}\n"
         if mevcut_kod:
             istek += f"MEVCUT KOD:\n{mevcut_kod}\n\nBunu talimata göre düzelt ve saf kodu ver."
 
@@ -156,12 +175,17 @@ class QwenWorker:
                 {"role": "user", "content": istek}
             ],
             "stream": False,
-            "options": {"temperature": 0.1}
+            "temperature": 0.1,
+            "max_tokens": 4096
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
         }
         try:
-            response = requests.post(self.api_url, json=payload, timeout=90)
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=90)
             response.raise_for_status()
-            saf_kod = response.json()["message"]["content"].strip()
+            saf_kod = response.json()["choices"][0]["message"]["content"].strip()
 
             import re
             saf_kod = re.sub(r"^```[\w]*\n?", "", saf_kod)
@@ -178,8 +202,14 @@ class GhostController:
         # tool_runner artık ham metin değil, (isim: str, args: dict) alan bir
         # fonksiyon olmalı. command_handler.py tarafında _execute_tool_call.
         self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
-        self.worker = QwenWorker(model="qwen3-coder:480b-cloud")
+        self.worker = QwenWorker(model="deepseek-ai/deepseek-v3.2")
         self.tool_runner = tool_runner
+
+        # Proje hafızası: worker'a "bu projede zaten ne var" bağlamını
+        # vermek için — genel Bellek (rag_hafıza.py) ile karışmasın diye
+        # ayrı bir Chroma koleksiyonu kullanıyor.
+        self.proje_bellek = ProjeKodBellek()
+        self.episodic_db = EpisodicDB()
 
         # Bir turun (görev tamamlandı / sohbet cevabı / recursion limit'e
         # çarpıp vazgeçildi — hepsi dahil) KESİN olarak bittiği tek an burası.
@@ -299,11 +329,27 @@ class GhostController:
                 except Exception:
                     pass
 
+            # Bu dosya hangi projeye ait, biliyorsak proje bağlamını daralt.
+            # Bilmiyorsak proje_adi=None ile arama tüm projeler genelinde yapılır.
+            proje_adi = self.episodic_db.proje_adi_bul(dosya_yolu)
+
+            # Proje hafızasından, talimatla ilgili mevcut fonksiyon/class'ları
+            # sorgula — worker "bu zaten var mı" bilgisiyle kod üretsin,
+            # fonksiyon adı uydurmasın.
+            proje_baglami = self.proje_bellek.baglam_metni_uret(talimat, proje_adi=proje_adi)
+
             try:
-                saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod)
+                saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod, ek_baglam=proje_baglami)
                 yazma_sonucu = self.tool_runner("dosya_yaz", {"yol": dosya_yolu, "icerik": saf_kod})
                 gozlem = f"Kod işçisi (Qwen) dosyayı yazdı. {yazma_sonucu}"
-                
+
+                # Yazılan dosyayı proje hafızasına indeksle ki bir sonraki
+                # talimatta bu fonksiyonlar/class'lar aranabilir olsun.
+                try:
+                    self.proje_bellek.dosyayi_indexle(dosya_yolu, proje_adi or "_bilinmiyor")
+                except Exception as e:
+                    print(f"[SİSTEM UYARISI] Proje hafızası indeksleme hatası: {e}")
+
                 return {
                     "messages": [{
                         "role": "tool",

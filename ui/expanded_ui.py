@@ -77,8 +77,13 @@ def _build_sidebar(app, parent):
 
 def _populate_sessions(app, frame):
     """Oturum listesini sidebar'a doldurur."""
-    for widget in frame.winfo_children():
-        widget.destroy()
+    if not hasattr(app, "_session_widgets"):
+        app._session_widgets = []
+    
+    for widget in app._session_widgets:
+        if widget.winfo_exists():
+            widget.destroy()
+    app._session_widgets.clear()
 
     sessions = list_sessions(40)
 
@@ -125,11 +130,18 @@ def _populate_sessions(app, frame):
 
         # Tıklama
         def _on_click(event, s_id=sid):
-            app.switch_session(s_id)
+            if s_id != app.current_session_id:
+                app.switch_session(s_id)
 
         row.bind("<Button-1>", _on_click)
-        for child in row.winfo_children():
-            child.bind("<Button-1>", _on_click)
+        def bind_all_children(parent):
+            for child in parent.winfo_children():
+                child.bind("<Button-1>", _on_click)
+                bind_all_children(child)
+                
+        bind_all_children(row)
+            
+        app._session_widgets.append(row)
 
 
 # ── Ana Alan ──────────────────────────────────────────────────────────────────
@@ -256,6 +268,10 @@ def append_chat_bubble(app, role: str, text: str):
         padx=12, pady=8
     )
     bubble.pack(anchor="e" if is_user else "w", pady=(2, 4))
+
+    if not hasattr(app, "_chat_bubbles"):
+        app._chat_bubbles = []
+    app._chat_bubbles.append(container)
 
     # Scroll'u en alta götür
     app.after(50, lambda: app.chat_scroll._parent_canvas.yview_moveto(1.0))
