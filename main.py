@@ -247,6 +247,11 @@ class GhostOperatorUI(ctk.CTk):
         self.telegram_bridge.start_in_background()  # Telegram dinlemeyi başlat
         threading.Thread(target=self.command_handler.run_startup, daemon=True).start()
 
+    def open_settings(self):
+        """Ayarlar penceresini aç."""
+        from ui.settings_ui import open_settings_window
+        open_settings_window(self)
+
     # ── Telegram köprüsü ──────────────────────────────────────────────────────
 
     def _telegram_mesaji_isle(self, text: str, user: str, chat_id: int):

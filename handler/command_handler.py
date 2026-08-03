@@ -257,17 +257,17 @@ class CommandHandler:
         self.controller.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
         
         try:
-            # Sihir burada gerçekleşir! LangGraph arka planda araçları çalıştırır, 
-            # düşünür ve işi bittiğinde nihai cevabı döndürür.
             cevap, model = self.controller._raw_supervisor_call()
             self._update_model_label(model)
             
-            # cevap artık gorev_bitti tool_call'ının 'ozet' argümanından geliyor,
-            # zaten temiz metin — regex ile tag temizlemeye gerek kalmadı.
             final_mesaji = cevap.strip() if cevap else ""
             
             if final_mesaji:
-                self.app.record_message("ghost", final_mesaji)
+                if getattr(self.app, "_expanded", False):
+                    # Streaming animasyonu: kelime kelime yaz
+                    self._stream_to_bubble(final_mesaji)
+                else:
+                    self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
                     self._asistan_konus(final_mesaji)
                     
@@ -277,6 +277,50 @@ class CommandHandler:
             self.app.record_message("ghost", hata_mesaji)
             if self.app.voice_mode:
                 self._asistan_konus(hata_mesaji)
+
+    def _stream_to_bubble(self, text: str, chunk_size: int = 3, interval_ms: int = 18):
+        """
+        Metni kelime/karakter grupları halinde animasyonla Ghost balonuna yazar.
+        Ana thread'de _messages + SQLite'a da kaydeder.
+        """
+        from ui.expanded_ui import create_streaming_bubble
+
+        # Geçmişe hemen ekle (thread-safe)
+        self.app._messages.append({"role": "ghost", "text": text, "ts": int(time.time())})
+        if hasattr(self, "episodic_db"):
+            self.episodic_db.mesaj_kaydet(self.app.current_session_id, "ghost", text)
+
+        _, bubble_label = create_streaming_bubble(self.app)
+        if bubble_label is None:
+            # Expanded mod yoksa normal yaz
+            self.app.record_message("ghost", text)
+            return
+
+        # Chunk'lara böl (chunk_size karakter grupları)
+        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        accumulated = [""]
+
+        def _type_next(idx: int):
+            if idx >= len(chunks):
+                # Bitti — imleç kaldır
+                try:
+                    if bubble_label.winfo_exists():
+                        bubble_label.configure(text=text)
+                        app_after = self.app.after(
+                            50, lambda: self.app.chat_scroll._parent_canvas.yview_moveto(1.0)
+                        )
+                except Exception:
+                    pass
+                return
+            accumulated[0] += chunks[idx]
+            try:
+                if bubble_label.winfo_exists():
+                    bubble_label.configure(text=accumulated[0] + "▋")
+                    self.app.after(interval_ms, lambda: _type_next(idx + 1))
+            except Exception:
+                pass
+
+        self.app.after(0, lambda: _type_next(0))
 
     def _execute_tool_call(self, isim: str, args: dict) -> str:
         """llm.py'nin tools_node'u tarafından çağrılır. tool_registry üzerinden
@@ -882,6 +926,30 @@ class CommandHandler:
         if not os.path.isabs(yol):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             yol = os.path.join(base_dir, "tools", yol)
+
+        # ── Human-in-the-Loop: Var olan dosyayı değiştiriyorsa diff göster ────
+        if os.path.exists(yol):
+            try:
+                with open(yol, "r", encoding="utf-8") as f:
+                    eski_icerik = f.read()
+                if eski_icerik.strip() != icerik.strip():  # gerçekten değişiklik var mı?
+                    import threading as _th
+                    from ui.diff_dialog import show_diff_dialog
+                    event = _th.Event()
+                    result_holder = {"approved": False, "reason": ""}
+                    show_diff_dialog(self.app, yol, eski_icerik, icerik, event, result_holder)
+                    timed_out = not event.wait(timeout=120)
+                    if timed_out:
+                        # Süre doldu → otomatik onayla
+                        pass
+                    elif not result_holder["approved"]:
+                        reason = result_holder.get("reason", "").strip()
+                        msg = "Kullanıcı bu değişikliği onaylamadı."
+                        if reason:
+                            msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
+                        return msg
+            except Exception as e:
+                self.app.log(f"[UYARI] Diff hesaplanamadı: {e}", "yellow")
 
         folder = os.path.dirname(yol)
         if folder:

@@ -155,6 +155,12 @@ def _build_main(app, parent):
     _build_topbar(app, main)
     _build_chat_area(app, main)
     _build_toolbar(app, main)
+
+    # Terminal panelı (başlangıçta gizli, grid row=3)
+    from ui.terminal_panel import build_terminal_panel
+    app._terminal_panel = build_terminal_panel(app, main)
+    app._terminal_visible = False
+
     _build_input_row(app, main)
 
 
@@ -170,10 +176,18 @@ def _build_topbar(app, parent):
     )
     app.model_label.grid(row=0, column=1, padx=8)
 
+    # Sağ: Ayarlar butonu
+    ctk.CTkButton(
+        bar, text="⚙", width=32, height=28,
+        font=("Consolas", 14), fg_color="transparent", hover_color="#1a1a1a",
+        text_color="#555555", border_width=1, border_color="#1e1e1e",
+        command=app.open_settings
+    ).grid(row=0, column=2, padx=(0, 6))
+
     # Sağ: ekran yorumla
     app.ss_button = build_screenshot_button(bar)
     app.ss_button.configure(width=180, height=28, font=("Consolas", 11),command=lambda: screenshot_al_ve_yorumla(app))
-    app.ss_button.grid(row=0, column=2, padx=12)
+    app.ss_button.grid(row=0, column=3, padx=12)
 
 
 def _build_chat_area(app, parent):
@@ -203,13 +217,31 @@ def _build_toolbar(app, parent):
     ctk.CTkButton(bar, text="⏭", width=32, command=lambda: muzik_kontrol("sonraki"), **BTN).pack(side="left", padx=2, pady=6)
 
     ctk.CTkLabel(bar, text="|", text_color="#222222", font=FONT_SMALL).pack(side="left", padx=6)
-
     ctk.CTkButton(bar, text="🧠 RAG Bellek", width=100, **BTN).pack(side="left", padx=2, pady=6)
+
+    ctk.CTkLabel(bar, text="|", text_color="#222222", font=FONT_SMALL).pack(side="left", padx=6)
+
+    # Terminal toggle butonu
+    def _toggle_terminal():
+        if not hasattr(app, "_terminal_panel") or not app._terminal_panel.winfo_exists():
+            return
+        app._terminal_visible = not app._terminal_visible
+        if app._terminal_visible:
+            app._terminal_panel.grid(row=3, column=0, sticky="ew")
+            term_btn.configure(text_color="#00FFcc", border_color="#1e3028")
+        else:
+            app._terminal_panel.grid_forget()
+            term_btn.configure(text_color="#aaaaaa", border_color="#1e1e1e")
+
+    term_btn = ctk.CTkButton(
+        bar, text=">_ Terminal", width=100, command=_toggle_terminal, **BTN
+    )
+    term_btn.pack(side="left", padx=2, pady=6)
 
 
 def _build_input_row(app, parent):
     row = ctk.CTkFrame(parent, fg_color="#0d0d0d", corner_radius=0)
-    row.grid(row=3, column=0, sticky="ew", padx=0, pady=0)
+    row.grid(row=4, column=0, sticky="ew", padx=0, pady=0)
     row.grid_columnconfigure(0, weight=1)
 
     app.entry = ctk.CTkEntry(
@@ -275,3 +307,42 @@ def append_chat_bubble(app, role: str, text: str):
 
     # Scroll'u en alta götür
     app.after(50, lambda: app.chat_scroll._parent_canvas.yview_moveto(1.0))
+
+
+def create_streaming_bubble(app) -> tuple:
+    """
+    Streaming için boş bir Ghost balonu oluşturur.
+    (container, bubble_label) döndürür.
+    Bubble label'a .configure(text=...) ile token token yazılabilir.
+    """
+    if not hasattr(app, "chat_scroll") or not app.chat_scroll.winfo_exists():
+        return None, None
+
+    container = ctk.CTkFrame(app.chat_scroll, fg_color="transparent")
+    container.pack(fill="x", padx=12, pady=(4, 0))
+
+    ctk.CTkLabel(
+        container, text="Ghost",
+        font=("Consolas", 10), text_color="#2a5a45", anchor="w"
+    ).pack(anchor="w")
+
+    bubble = ctk.CTkLabel(
+        container,
+        text="▋",  # imleç animasyonu
+        font=("Consolas", 12),
+        fg_color=BG_BUBBLE_AI,
+        text_color=CLR_ACCENT,
+        corner_radius=10,
+        wraplength=520,
+        justify="left",
+        anchor="w",
+        padx=12, pady=8
+    )
+    bubble.pack(anchor="w", pady=(2, 4))
+
+    if not hasattr(app, "_chat_bubbles"):
+        app._chat_bubbles = []
+    app._chat_bubbles.append(container)
+
+    app.after(50, lambda: app.chat_scroll._parent_canvas.yview_moveto(1.0))
+    return container, bubble
