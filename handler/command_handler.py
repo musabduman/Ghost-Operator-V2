@@ -91,6 +91,7 @@ class CommandHandler:
         tool_registry.bind_handler("uzun_gorev_plani_yap", self._tool_uzun_gorev_plani_yap)
         
         self.aktif_plan = None
+        self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
@@ -394,6 +395,12 @@ class CommandHandler:
                 dokunulan_dosya=yol,
                 gorev_ozeti=f"Son işlem: {isim} -> {os.path.basename(yol)} (proje adı henüz belirlenmedi)"
             )
+
+            # Bu dizin için daha önce sorduk mu? Aynı oturumda tekrar sorma.
+            if aktif_dizin in self._sorulmus_dizinler:
+                return None
+            self._sorulmus_dizinler.add(aktif_dizin)
+
             return (
                 f"[SİSTEM NOTU: '{aktif_dizin}' dizini için kayıtlı bir proje adı yok. "
                 f"Eğer bu bir proje klasörüyse, Patron'a bu klasör için ne isim vermek istediğini BİR KERELİĞİNE sor, "
@@ -501,12 +508,49 @@ class CommandHandler:
             return f"Okuma sırasında hata oluştu: {str(e)}"
 
     def _tool_uzun_gorev_plani_yap(self, hedef: str, adimlar: list) -> str:
+        # Web/Node.js projelerini otomatik tespit et; eksik adımları enjekte et
+        hedef_lower = hedef.lower()
+        is_web = any(k in hedef_lower for k in ["web", "site", "html", "node", "npm", "react", "uygulama"])
+        is_node = any(k in hedef_lower for k in ["node", "npm", "express", "server.js", "package.json"])
+
+        # Proje klasörünü ilk adımda bul (klasor_yap / klasor_ac söz geçiyor mu?)
+        proje_klasor_adimi_var = any(
+            any(k in str(a).lower() for k in ["klasor_yap", "klasör", "mkdir", "oluştur"])
+            for a in adimlar
+        )
+
+        # npm install adımı eksikse ve Node projesi ise sona ekle
+        npm_adimi_var = any("npm install" in str(a).lower() for a in adimlar)
+        ac_adimi_var = any(any(k in str(a).lower() for k in ["aç", "ac", "başlat", "tarayıcı"]) for a in adimlar)
+
+        enjekte_edilenler = []
+        if is_node and not npm_adimi_var:
+            enjekte_edilenler.append("kodu_calistir ile 'npm install' komutunu çalıştır (bağımlılıkları kur)")
+        if is_web and not ac_adimi_var:
+            if is_node:
+                enjekte_edilenler.append("kodu_calistir ile projeyi başlat (node server.js veya npm start) ve Patron'a localhost adresini bildir")
+            else:
+                enjekte_edilenler.append("uygulama_ac ile index.html dosyasını tarayıcıda aç")
+
+        adimlar_son = list(adimlar) + enjekte_edilenler
+
         self.aktif_plan = {
             "hedef": hedef,
-            "adimlar": adimlar
+            "adimlar": adimlar_son
         }
-        plan_str = "\n".join(f"{i+1}. {a}" for i, a in enumerate(adimlar))
-        return f"Plan başarıyla kaydedildi. HEDEF: {hedef}\nADIMLAR:\n{plan_str}\nLütfen şimdi araçlarını kullanarak 1. adımdan uygulamaya başla."
+        plan_str = "\n".join(f"{i+1}. {a}" for i, a in enumerate(adimlar_son))
+
+        ekstra_not = ""
+        if enjekte_edilenler:
+            ekstra_not = f"\n\n[SİSTEM: {len(enjekte_edilenler)} adım otomatik eklendi: {', '.join(enjekte_edilenler)}]"
+
+        return (
+            f"Plan başarıyla kaydedildi. HEDEF: {hedef}\n"
+            f"ADIMLAR:\n{plan_str}{ekstra_not}\n\n"
+            f"[PROJE PROTOKOLÜ HATIRLATMASI]: Her dosyayı sırayla yaz. "
+            f"Bir dosya bitmeden diğerine geçme. "
+            f"Tüm dosyalar yazılıp bağımlılıklar kurulunca projeyi çalıştır, ardından gorev_bitti çağır."
+        )
 
     def _tool_browser_type(self, url: str, kutu: str, metin: str) -> str:
         self.app.log(f"SİSTEM: '{url}' adresinde '{kutu}' öğesine '{metin}' yazılıyor...", "green")
