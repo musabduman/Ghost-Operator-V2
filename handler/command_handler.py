@@ -89,6 +89,7 @@ class CommandHandler:
         tool_registry.bind_handler("durum_getir", self._tool_durum_getir)
         tool_registry.bind_handler("proje_adi_ayarla", self._tool_proje_adi_ayarla)
         tool_registry.bind_handler("uzun_gorev_plani_yap", self._tool_uzun_gorev_plani_yap)
+        tool_registry.bind_handler("terminal_cikti_oku", self._tool_terminal_cikti_oku)
         
         self.aktif_plan = None
         self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
@@ -981,3 +982,14 @@ class CommandHandler:
             return f"Hedeflenen dosya bulunamadı. Klasörün içindeki mevcut dosyalar: {files}"
             
         return "Dosya veya dizin tamamen geçersiz."
+
+    def _tool_terminal_cikti_oku(self, satir_sayisi: str = "50") -> str:
+        """Kullanıcının terminal panelindeki çıktıları okur."""
+        try:
+            from ui.terminal_panel import get_terminal_output
+            n = int(satir_sayisi) if str(satir_sayisi).isdigit() else 50
+            out = get_terminal_output(last_n=n)
+            self.app.log(f"SİSTEM: Terminal okundu (Son {n} satır)", "green")
+            return f"Terminal Çıktısı (Son {n} satır):\n{out}"
+        except Exception as e:
+            return f"Terminal okunamadı: {str(e)}"
