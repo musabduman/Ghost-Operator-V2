@@ -8,8 +8,6 @@ import time
 import pygame
 
 from ai.konus import GhostSpeech
-from hafıza.rag_hafıza import Bellek
-from kontrol.spotify import SpotifyManager
 from core.tool_registry import tool_registry
 from ai.librarian_agent import LibrarianAgent
 from tools.telegram_tool import TelegramBridge

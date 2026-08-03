@@ -18,6 +18,7 @@ class GhostState(TypedDict):
     son_talimat: str
     calisan_araclar: Annotated[list, operator.add]
     tool_calls: list
+    yazilan_dosyalar: Annotated[list, operator.add]  # Bu turda yazılan dosyalar (tutarlılık için)
 
 
 from core.tool_registry import tool_registry
@@ -83,6 +84,15 @@ class ChatLLM(BaseLLM):
 
         [KOD İŞİ DEVRİ]
         Sen kodu kendin yazmazsın; kod_iste ile arka plandaki işçi modele devredersin. Patron kod/dosya istediğinde bu akışı izle.
+
+        [PROJE OLUŞTURMA — KESİN PROTOKOL]
+        Patron senden çok dosyalı bir proje (web sitesi, uygulama vb.) oluşturmanı istediğinde şu sırayı uygula:
+        1. ÖNCE PLAN: uzun_gorev_plani_yap ile proje adını, klasör yapısını ve yazılacak dosyaların sırasını belirle. Planı Patron'a onaylatmadan başlama.
+        2. KLASÖR OLUŞTURuŞTUR: klasor_yap ile ana proje klasörünü ve alt klasörleri oluştur.
+        3. SIRAYLA YAZ: Her dosyayı sırayla kod_iste ile yazdır. Bir sonraki dosyayı yazmadan önce önceki dosyanın başarılı yazıldığı tool observation'ından geldiğinde devam et.
+        4. BAĞIMLILIKLAR: Eğer proje Node.js ise dosyaları yazdıktan sonra kodu_calistir ile 'cd <proje_yolu> && npm install' komutunu çalıştır. Python projesinde pip install gerektiriyorsa aynısını yap.
+        5. BİTİŞTE AÇIK: Projeyi bitirince kodu_calistir ile projeyi başlat (node server.js, python app.py vb.) veya index.html gibi statik siteyse uygulama_ac ile tarayıcıda aç.
+        6. DOSYA TUTARLILIĞI: Birden fazla dosya yazarken 'script.js', 'style.css' gibi referans verilen dosya isimleri her dosyada birebir aynı olmalı. İlk dosyada belirlediğin yapıyı sonraki dosyalarda da koru.
         """
 
         tool_klasoru = os.path.join(os.getcwd(), "tools")
@@ -338,8 +348,23 @@ class GhostController:
             # fonksiyon adı uydurmasın.
             proje_baglami = self.proje_bellek.baglam_metni_uret(talimat, proje_adi=proje_adi)
 
+            # Bu turda daha önce yazılan dosyaları işçiye bağlam olarak ver.
+            # Bu sayede script.js yazılırken index.html'de ne yazdığını biliyor.
+            yazilan_dosyalar = state.get("yazilan_dosyalar", [])
+            onceki_dosyalar_baglamlari = ""
+            if yazilan_dosyalar:
+                onceki_dosyalar_baglamlari = "[BU PROJEDE DAHA ÖNCE YAZILAN DOSYALAR — tutarlı olmak için referans al]\n"
+                for yazilan in yazilan_dosyalar[-3:]:  # son 3 dosya yeterli
+                    try:
+                        if os.path.exists(yazilan):
+                            with open(yazilan, "r", encoding="utf-8") as f:
+                                icerik_ozet = f.read()[:800]  # ilk 800 karakter
+                            onceki_dosyalar_baglamlari += f"--- {os.path.basename(yazilan)} ---\n{icerik_ozet}\n...(devamı var)\n\n"
+                    except Exception:
+                        pass
+
             try:
-                saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod, ek_baglam=proje_baglami)
+                saf_kod = self.worker.saf_kod_uret(talimat, mevcut_kod, ek_baglam=proje_baglami + onceki_dosyalar_baglamlari)
                 yazma_sonucu = self.tool_runner("dosya_yaz", {"yol": dosya_yolu, "icerik": saf_kod})
                 gozlem = f"Kod işçisi (Qwen) dosyayı yazdı. {yazma_sonucu}"
 
@@ -357,7 +382,8 @@ class GhostController:
                         "tool_call_id": call_id,
                         "name": "kod_iste"
                     }],
-                    "calisan_araclar": [imza]
+                    "calisan_araclar": [imza],
+                    "yazilan_dosyalar": [dosya_yolu],  # bu turda yazılan dosyaları izle
                 }
             except Exception as e:
                 return {
@@ -471,12 +497,36 @@ class GhostController:
             "son_talimat": "",
             "calisan_araclar": [],
             "tool_calls": [],
+            "yazilan_dosyalar": [],
         }
 
-        config = {"recursion_limit": 15}
+        config = {"recursion_limit": 100}
 
         onceki_mesaj_sayisi = len(self.supervisor.mesaj_gecmisi)
-        sonuc_state = self.graph.invoke(baslangic_durumu, config)
+        try:
+            sonuc_state = self.graph.invoke(baslangic_durumu, config)
+        except Exception as graph_hatasi:
+            # Recursion limit veya başka bir LangGraph hatası. Mevcut durumu
+            # kurtarıp on_task_end'i garantili çağır, aksi halde aktif_plan
+            # sıfırlanmaz ve bir sonraki komut da aynı bozuk plana takılır.
+            hata_str = str(graph_hatasi)
+            if self.on_task_end:
+                try:
+                    self.on_task_end()
+                except Exception:
+                    pass
+            # Kullanıcıya anlamlı bir hata cevabı döndür
+            adim_limit_mi = "recursion" in hata_str.lower() or "GRAPH_RECURSION_LIMIT" in hata_str
+            if adim_limit_mi:
+                nihai_cevap = (
+                    "Patron, bu görev için gereken adım sayısı sisteme tanınan sınırı aştı. "
+                    "Görevi daha küçük parçalara bölerek tekrar verebilirsin — ör: 'sadece index.html'yi yaz' "
+                    "gibi. Her biri ayrı çalıştırdığımızda tamamlarız."
+                )
+            else:
+                nihai_cevap = f"Patron, işlem sırasında beklenmedik bir sistem hatası oluştu: {hata_str[:200]}"
+            model_name = "GPT-OSS 120B (Yönetici)"
+            return nihai_cevap, model_name
         yeni_mesajlar = sonuc_state["messages"][onceki_mesaj_sayisi:]
 
         # UI etiketi için: bu turda kod_iste çağrıldı mı?
