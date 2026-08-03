@@ -921,7 +921,7 @@ class CommandHandler:
             return f"Klasör İçeriği: {files}"
         return "Belirtilen yol bir klasör değil veya bulunamadı."
 
-    def _tool_write_file(self, yol: str, icerik: str) -> str:
+    def _tool_write_file(self, yol: str, icerik: str, aciklama: str = "(Ghost açıklama girmedi)") -> str:
         # Göreceli yol ya da sadece dosya adı verilmişse → tools/ klasörüne yönlendir
         # Mutlak yol verilmişse (C:\... gibi) dokunma
         if not os.path.isabs(yol):
@@ -938,7 +938,8 @@ class CommandHandler:
                     from ui.diff_dialog import show_diff_dialog
                     event = _th.Event()
                     result_holder = {"approved": False, "reason": ""}
-                    show_diff_dialog(self.app, yol, eski_icerik, icerik, event, result_holder)
+                    show_diff_dialog(self.app, yol, eski_icerik, icerik, aciklama, event, result_holder)
+
                     timed_out = not event.wait(timeout=120)
                     if timed_out:
                         # Süre doldu → otomatik onayla
