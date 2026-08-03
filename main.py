@@ -209,12 +209,20 @@ class GhostOperatorUI(ctk.CTk):
                 
     # ── Log (compact modda kullanılır) ────────────────────────────────────────
     def log(self, text: str, tag: str = ""):
-        # EĞER MESAJ BİR SİSTEM BİLGİSİYSE, SADECE TERMİNALE BAS VE ÇIK
+        from core.logger import log_yaz
+
+        # Seviye belirle
+        seviye = "error" if tag == "red" else ("warning" if tag == "yellow" else "info")
+
+        # Her logu kalıcı dosyaya yaz (Kütüphaneci logları hariç — filter içinde)
+        log_yaz(text, seviye)
+
+        # SİSTEM mesajları sadece terminale + dosyaya (UI'ya değil)
         if "SİSTEM" in text:
             print(text)
             return
 
-        # SİSTEM DEĞİLSE (Yani normal sohbetse) EKRANA YAZ
+        # Normal mesajı UI'ya yaz
         def _write():
             if hasattr(self, "log_text") and self.log_text.winfo_exists():
                 self.log_text.insert("end", text + "\n", tag)
