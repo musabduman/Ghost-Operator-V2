@@ -195,7 +195,11 @@ ghost_tool(
 ghost_tool(
     name="dosya_yaz",
     description="Bir dosyaya içerik yazar (üzerine yazar veya oluşturur). Klasör yoksa otomatik oluşturur.",
-    params={"yol": ("string", "Yazılacak dosyanın tam yolu"), "icerik": ("string", "Dosyaya yazılacak tam içerik")},
+    params={
+        "yol": ("string", "Yazılacak dosyanın tam yolu"),
+        "icerik": ("string", "Dosyaya yazılacak tam içerik"),
+        "aciklama": ("string", "Kullanıcıya gösterilecek olan 'bu değişikliğin ne yaptığına dair' net bir açıklama (neden yapıyoruz, ne değişecek).")
+    },
     resolve_paths=["yol"],
 )(None)
 
