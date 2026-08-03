@@ -291,3 +291,10 @@ ghost_tool(
         "adimlar": ("array", "Sırasıyla yapılması gereken adımların listesi (string dizisi)")
     }
 )(None)
+
+ghost_tool(
+    name="terminal_cikti_oku",
+    description="Kullanıcının terminal panelindeki son çıktıları okur. Kullanıcı terminalde bir şey çalıştırdıktan sonra sonucu görmek, hata mesajını analiz etmek veya hangi dizinde olduğunu anlamak için kullan.",
+    params={"satir_sayisi": ("string", "Okunacak son satır sayısı (varsayılan: 50)")},
+    required=[],
+)(None)
