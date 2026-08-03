@@ -88,6 +88,16 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
         command=_temizle
     ).pack(side="right", padx=0)
 
+    # ── Giriş satırı (Önce bottom'a packliyoruz ki output ezip geçmesin) ──────
+    input_row = ctk.CTkFrame(frame, fg_color="#0a0a0a", height=36, corner_radius=0)
+    input_row.pack(side="bottom", fill="x")
+    input_row.pack_propagate(False)
+
+    ctk.CTkLabel(
+        input_row, text="$",
+        text_color="#00FFcc", font=("Consolas", 14, "bold")
+    ).pack(side="left", padx=(10, 4), pady=6)
+
     # ── Çıktı alanı ────────────────────────────────────────────────────────────
     output = ctk.CTkTextbox(
         frame,
@@ -99,17 +109,8 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
         scrollbar_button_color="#111111",
         scrollbar_button_hover_color="#1a1a1a"
     )
-    output.pack(fill="both", expand=True, padx=0, pady=0)
+    output.pack(side="top", fill="both", expand=True, padx=0, pady=0)
 
-    # ── Giriş satırı ──────────────────────────────────────────────────────────
-    input_row = ctk.CTkFrame(frame, fg_color="#0a0a0a", height=36, corner_radius=0)
-    input_row.pack(fill="x")
-    input_row.pack_propagate(False)
-
-    ctk.CTkLabel(
-        input_row, text="$",
-        text_color="#00FFcc", font=("Consolas", 14, "bold")
-    ).pack(side="left", padx=(10, 4), pady=6)
 
     cmd_entry = ctk.CTkEntry(
         input_row,
