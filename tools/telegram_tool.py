@@ -4,6 +4,14 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
+# ── Yetkili kullanıcı ID'leri ─────────────────────────────────────────────────
+# Buraya eklenmeyen hiçbir Telegram user_id mesaj gönderemez.
+# Birden fazla ID eklemek için apı_key.env'de virgülle ayır: "111,222,333"
+_env_ids = os.getenv("TELEGRAM_ALLOWED_IDS", "1357186275")
+ALLOWED_USER_IDS: set = {
+    int(uid.strip()) for uid in _env_ids.split(",") if uid.strip().isdigit()
+}
+
 
 class TelegramBridge:
     def __init__(self, ui_callback, token: str = None):
@@ -21,9 +29,24 @@ class TelegramBridge:
         self._last_chat_id = None  # telegram_mesaj_gonder chat_id verilmezse buraya düşer
 
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_user.username or update.effective_user.full_name
-        text = update.message.text
+        user_id = update.effective_user.id
+        user    = update.effective_user.username or update.effective_user.full_name
+        text    = update.message.text
         chat_id = update.effective_chat.id
+
+        # ── Yetki kontrolü ────────────────────────────────────────────────────
+        if user_id not in ALLOWED_USER_IDS:
+            print(f"[TELEGRAM GÜVENLİK] Yetkisiz erişim engellendi → user_id={user_id}, user={user}")
+            try:
+                url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+                requests.post(url, json={
+                    "chat_id": chat_id,
+                    "text": "⛔ Bu bot özel kullanıma aittir. Erişim yetkiniz bulunmamaktadır."
+                }, timeout=10)
+            except Exception:
+                pass
+            return  # İşleme alma, sessizce reddet
+
         self._last_chat_id = chat_id
         self.ui_callback(text, user, chat_id)
 
