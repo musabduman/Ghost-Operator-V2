@@ -217,7 +217,14 @@ def _build_toolbar(app, parent):
     ctk.CTkButton(bar, text="⏭", width=32, command=lambda: muzik_kontrol("sonraki"), **BTN).pack(side="left", padx=2, pady=6)
 
     ctk.CTkLabel(bar, text="|", text_color="#222222", font=FONT_SMALL).pack(side="left", padx=6)
-    ctk.CTkButton(bar, text="🧠 RAG Bellek", width=100, **BTN).pack(side="left", padx=2, pady=6)
+
+    # Hafıza Görüntüleyici
+    ctk.CTkButton(bar, text="🗄 Hafıza", width=100,
+                  command=lambda: _open_memory(app), **BTN).pack(side="left", padx=2, pady=6)
+
+    # Log dosyasını aç
+    ctk.CTkButton(bar, text="📋 Log", width=70,
+                  command=lambda: _open_log_file(), **BTN).pack(side="left", padx=2, pady=6)
 
     ctk.CTkLabel(bar, text="|", text_color="#222222", font=FONT_SMALL).pack(side="left", padx=6)
 
@@ -346,3 +353,24 @@ def create_streaming_bubble(app) -> tuple:
 
     app.after(50, lambda: app.chat_scroll._parent_canvas.yview_moveto(1.0))
     return container, bubble
+
+
+# ── Toolbar yardımcı fonksiyonları ────────────────────────────────────────────
+
+def _open_memory(app):
+    """Hafıza görüntüleyici penceresini aç."""
+    from ui.memory_viewer import open_memory_viewer
+    open_memory_viewer(app)
+
+
+def _open_log_file():
+    """Ghost log dosyasını varsayılan metin editörüyle aç."""
+    import os
+    import subprocess
+    log_path = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "logs", "ghost.log")
+    if not os.path.exists(log_path):
+        return
+    try:
+        os.startfile(log_path)  # Windows — Not defteri veya varsayılan editör
+    except Exception:
+        subprocess.Popen(["notepad", log_path])
