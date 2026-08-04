@@ -248,7 +248,25 @@ ghost_tool(
 ghost_tool(
     name="durum_getir",
     description="Bir projenin çalışma durumunu (en son dokunulan dosyalar, aktif dizin, son görev özeti) getirir. 'Kaldığımız yerden devam edelim' veya 'en son ne yapıyordum' gibi isteklerde kullan.",
-    params={"proje_adi": ("string", "Durumu sorgulanacak proje adı, ya da 'son'")},
+    params={"proje_adi": ("string", "Sorgulanacak projenin tam adı, örn: KriptoDashboard")},
+)(None)
+
+ghost_tool(
+    name="periyodik_gorev_olustur",
+    description="Arka planda (belirli saat aralıklarıyla) düzenli olarak uyanıp çalışacak bir sistem görevi oluşturur. Örneğin 'her sabah maillerime bak', '2 saatte bir hisseleri kontrol et'.",
+    params={"gorev_tanimi": ("string", "Görevin detaylı tanımı, ne yapılacağı"), "periyot_saat": ("number", "Görevin kaç saatte bir çalışacağı, örn: 24.0 veya 0.5")}
+)(None)
+
+ghost_tool(
+    name="periyodik_gorevleri_listele",
+    description="Şu an aktif olan tüm periyodik (arka plan) görevlerin ID, isim ve aralık bilgilerini listeler.",
+    params={}
+)(None)
+
+ghost_tool(
+    name="periyodik_gorev_sil",
+    description="Verilen ID'ye sahip periyodik arka plan görevini siler/iptal eder.",
+    params={"gorev_id": ("integer", "Silinecek görevin ID'si (listeden öğrenilir)")}
 )(None)
 
 ghost_tool(

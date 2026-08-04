@@ -71,6 +71,28 @@ class EpisodicDB:
                     olusturma_zamani INTEGER
                 )
             """)
+
+            # 5. Zamanlanmış Görevler (Cron/Scheduler) Tablosu
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS zamanlanmis_gorevler (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gorev_tanimi TEXT,
+                    periyot_saat REAL,
+                    son_calisma INTEGER,
+                    aktif_mi INTEGER DEFAULT 1,
+                    is_system_task INTEGER DEFAULT 0
+                )
+            """)
+
+            # 6. Bildirimler Tablosu
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bildirimler (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    icerik TEXT,
+                    tarih INTEGER,
+                    okundu_mu INTEGER DEFAULT 0
+                )
+            """)
             conn.commit()
 
     def mesaj_kaydet(self, session_id: str, role: str, content: str):
@@ -239,3 +261,59 @@ class EpisodicDB:
                 if en_iyi is None or len(kok_norm) > len(en_iyi["kok_dizin"]):
                     en_iyi = aday
         return en_iyi["proje_adi"] if en_iyi else None  
+
+    # ── Zamanlanmış Görevler (Cron) ──────────────────────────────────────
+    def gorev_ekle(self, gorev_tanimi: str, periyot_saat: float, is_system_task: int = 0):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO zamanlanmis_gorevler (gorev_tanimi, periyot_saat, son_calisma, aktif_mi, is_system_task) VALUES (?, ?, ?, 1, ?)",
+                (gorev_tanimi, periyot_saat, 0, is_system_task)
+            )
+            conn.commit()
+
+    def calisacak_gorevleri_getir(self):
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM zamanlanmis_gorevler WHERE aktif_mi = 1")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def gorev_calisma_zamanini_guncelle(self, gorev_id: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE zamanlanmis_gorevler SET son_calisma = ? WHERE id = ?", (int(time.time()), gorev_id))
+            conn.commit()
+
+    def tum_gorevleri_getir(self):
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, gorev_tanimi, periyot_saat, aktif_mi FROM zamanlanmis_gorevler")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def gorev_sil(self, gorev_id: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM zamanlanmis_gorevler WHERE id = ?", (gorev_id,))
+            conn.commit()
+
+    # ── Bildirimler ──────────────────────────────────────────────────────
+    def bildirim_ekle(self, icerik: str):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO bildirimler (icerik, tarih, okundu_mu) VALUES (?, ?, 0)", (icerik, int(time.time())))
+            conn.commit()
+            
+    def okunmamis_bildirimleri_getir(self):
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM bildirimler WHERE okundu_mu = 0 ORDER BY id DESC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def bildirimleri_okundu_isaretle(self):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE bildirimler SET okundu_mu = 1")
+            conn.commit()

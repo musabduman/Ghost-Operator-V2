@@ -26,10 +26,30 @@ def _read_env() -> dict:
     return values
 
 def _write_env(values: dict):
-    """Sözlüğü apı_key.env formatında yazar."""
+    """Sözlüğü apı_key.env formatında yazar (yorumları korur)."""
     lines = []
+    if os.path.exists(ENV_PATH):
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+    # Mevcut satırları güncelle
+    updated_keys = set()
+    for i, line in enumerate(lines):
+        striped = line.strip()
+        if not striped or striped.startswith("#"):
+            continue
+        if "=" in striped:
+            k, _, _ = striped.partition("=")
+            k = k.strip()
+            if k in values:
+                lines[i] = f'{k} = "{values[k]}"\n'
+                updated_keys.add(k)
+                
+    # Dosyada hiç olmayan yeni anahtarları sona ekle
     for k, v in values.items():
-        lines.append(f'{k} = "{v}"\n')
+        if k not in updated_keys:
+            lines.append(f'{k} = "{v}"\n')
+            
     with open(ENV_PATH, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
