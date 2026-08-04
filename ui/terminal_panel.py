@@ -137,7 +137,7 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
         """CWD etiketini güncelle."""
         app.after(0, lambda: cwd_label.configure(text=_short_cwd(new_cwd)))
 
-    def _check_project(new_cwd: str):
+    def _check_project(new_cwd: str, manual_cd: bool = False):
         """CWD değişince proje bağlamını kontrol et — episodic_db ile senkronize."""
         try:
             if not hasattr(app, "command_handler"):
@@ -147,13 +147,15 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
                 return
 
             proje_adi = db.proje_adi_bul(new_cwd)
+            tetikleyici_mesaj = ""
 
             if proje_adi and not proje_adi.startswith("_bilinmiyor::"):
                 # Bilinen proje — banner göster, durumu güncelle
                 durum = db.durum_getir(proje_adi)
                 banner = f"📂 {proje_adi}"
-                if durum and durum.get("son_gorev_ozeti"):
-                    banner += f"  |  Son: {durum['son_gorev_ozeti'][:50]}"
+                son_ozet = durum.get("son_gorev_ozeti", "") if durum else ""
+                if son_ozet:
+                    banner += f"  |  Son: {son_ozet[:50]}"
                 app.after(0, lambda b=banner: project_label.configure(text=b, text_color="#00FFcc"))
                 _append(output, f"\n[Terminal → Ghost] Proje: {proje_adi}\n", "#2a5a45")
                 # Ghost state'ini güncelle (sessizce)
@@ -161,8 +163,11 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
                     proje_adi=proje_adi,
                     aktif_dizin=new_cwd,
                     dokunulan_dosya=None,
-                    gorev_ozeti=durum.get("son_gorev_ozeti", "") if durum else ""
+                    gorev_ozeti=son_ozet
                 )
+                
+                if manual_cd and not app.command_handler.su_an_mesgul:
+                    tetikleyici_mesaj = f"[SİSTEM TETİKLEYİCİSİ]: Patron terminalden daha önce çalıştığımız '{proje_adi}' projesinin klasörüne ({new_cwd}) giriş yaptı. Projenin son durumu: '{son_ozet}'. Patron'a bu projeyi hatırladığını belirten ve ne yapmak istediğini (veya projede yeni bir şey var mı diye kontrol edip etmemen gerektiğini) soran ÇOK KISA bir hoş geldin mesajı ver."
             else:
                 # Bilinmeyen dizin
                 app.after(0, lambda: project_label.configure(
@@ -172,6 +177,23 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
                 # Oturumda ilk kez geliyorsa Ghost'a soru sormak için işaretle
                 sorulmus = getattr(app.command_handler, "_sorulmus_dizinler", set())
                 sorulmus.discard(new_cwd)  # Terminal'den cd ile gelince tekrar sor
+                
+                if manual_cd and not app.command_handler.su_an_mesgul:
+                    try:
+                        dosyalar = os.listdir(new_cwd)[:8]
+                        dosya_bilgisi = ", ".join(dosyalar)
+                    except Exception:
+                        dosya_bilgisi = "(Okunamadı)"
+                    tetikleyici_mesaj = f"[SİSTEM TETİKLEYİCİSİ]: Patron terminalden yeni/bilinmeyen bir klasöre ({new_cwd}) giriş yaptı. Klasörün içinde şunlar var: {dosya_bilgisi}. Patron'a buranın yeni bir proje olup olmadığını veya ne yapmak istediğini soran ÇOK KISA bir mesaj ver."
+
+            # Eğer Ghost boşta ise ve manuel bir dizin değişimi yapıldıysa proaktif olarak tepki ver
+            if tetikleyici_mesaj:
+                import threading as _th
+                _th.Thread(
+                    target=app.command_handler._orchestrate_task,
+                    args=(tetikleyici_mesaj,),
+                    daemon=True
+                ).start()
 
         except Exception as e:
             print(f"[Terminal] Proje bağlamı hatası: {e}")
@@ -200,7 +222,7 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
                 cwd[0] = new_cwd
                 _update_cwd_ui(new_cwd)
                 _append(output, f"$ cd → {new_cwd}\n", "#666666")
-                threading.Thread(target=_check_project, args=(new_cwd,), daemon=True).start()
+                threading.Thread(target=_check_project, args=(new_cwd, True), daemon=True).start()
             else:
                 _append(output, f"[Hata] Dizin bulunamadı: {new_cwd}\n", "#e05050")
             return
