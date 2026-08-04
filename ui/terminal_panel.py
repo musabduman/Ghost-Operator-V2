@@ -61,7 +61,7 @@ def build_terminal_panel(app, parent) -> ctk.CTkFrame:
                 db.proje_durumu_sil(proje_adi)
                 _append(output, f"[Terminal] '{proje_adi}' projesi kapatıldı. State temizlendi.\n", "#e05050")
                 project_label.configure(text="")
-                app.after(0, lambda: app._sorulmus_dizinler.discard(cwd[0])
+                app.after(0, lambda: app.command_handler._sorulmus_dizinler.discard(cwd[0])
                           if hasattr(app.command_handler, "_sorulmus_dizinler")
                           else None)
         except Exception as e:

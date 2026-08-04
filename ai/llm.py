@@ -2,10 +2,11 @@ import os
 import json
 import platform
 import operator
+import requests
+import threading
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
-import requests
 
 # apı_key.env dosyasını oku
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apı_key.env")
@@ -215,6 +216,7 @@ class GhostController:
         self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
         self.worker = QwenWorker(model="deepseek-ai/deepseek-v3.2")
         self.tool_runner = tool_runner
+        self._lock = threading.Lock()
 
         # Proje hafızası: worker'a "bu projede zaten ne var" bağlamını
         # vermek için — genel Bellek (rag_hafıza.py) ile karışmasın diye
@@ -491,9 +493,10 @@ class GhostController:
 
         return workflow.compile()
 
-    def _raw_supervisor_call(self) -> tuple[str, str]:
+    def _raw_supervisor_call(self, gecici_mesajlar=None) -> tuple[str, str]:
+        mesajlar = gecici_mesajlar if gecici_mesajlar is not None else self.supervisor.mesaj_gecmisi
         baslangic_durumu = {
-            "messages": self.supervisor.mesaj_gecmisi,
+            "messages": mesajlar,
             "son_istenen_dosya": "",
             "son_talimat": "",
             "calisan_araclar": [],
@@ -503,7 +506,7 @@ class GhostController:
 
         config = {"recursion_limit": 100}
 
-        onceki_mesaj_sayisi = len(self.supervisor.mesaj_gecmisi)
+        onceki_mesaj_sayisi = len(mesajlar)
         try:
             sonuc_state = self.graph.invoke(baslangic_durumu, config)
         except Exception as graph_hatasi:
@@ -553,7 +556,8 @@ class GhostController:
 
         # Kalıcı geçmişe bu turun TÜM mesajlarını (tool çağrıları + sonuçları
         # dahil) yapılandırılmış haliyle ekliyoruz.
-        self.supervisor.mesaj_gecmisi.extend(yeni_mesajlar)
+        if gecici_mesajlar is None:
+            self.supervisor.mesaj_gecmisi.extend(yeni_mesajlar)
 
         # Eğer limit aşımı olduysa ve nihai bir cevap üretemediysek,
         # LLM'e sadece nerede takıldığını ve sorunun ne olduğunu açıklatıyoruz.
@@ -565,12 +569,14 @@ class GhostController:
                 "Kesinlikle yeni bir araç (tool) çağırma."
             )
             # Geçmiş mesajlara (yeni_mesajlar dahil) kurtarma promptunu ekleyip gönderiyoruz
-            kurtarma_mesajlari = self.supervisor.mesaj_gecmisi + [{"role": "user", "content": kurtarma_promptu}]
+            mesajlar_gecmisi = gecici_mesajlar if gecici_mesajlar is not None else self.supervisor.mesaj_gecmisi
+            kurtarma_mesajlari = mesajlar_gecmisi + [{"role": "user", "content": kurtarma_promptu}]
             try:
                 response_msg = self.supervisor._raw_call(kurtarma_mesajlari, tools=None)
                 nihai_cevap = response_msg.get("content", "İşlem limit aşımına uğradı ve nerede takıldığımı açıklayamadım.")
                 # Kurtarma yanıtını da geçmişe ekliyoruz
-                self.supervisor.mesaj_gecmisi.append(response_msg)
+                if gecici_mesajlar is None:
+                    self.supervisor.mesaj_gecmisi.append(response_msg)
             except Exception as e:
                 nihai_cevap = f"[Sistem Hatası] Limit aşımı sonrasında açıklama üretilemedi: {e}"
 
@@ -587,6 +593,16 @@ class GhostController:
         return nihai_cevap.strip() if nihai_cevap else "...", model_name
 
     def __call__(self, user_input):
-        self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
-        cevap, model = self._raw_supervisor_call()
-        return cevap, model
+        with self._lock:
+            self.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
+            cevap, model = self._raw_supervisor_call()
+            return cevap, model
+
+    def tek_seferlik_gorev(self, user_input):
+        with self._lock:
+            # Sadece bu görev için geçici bir mesaj listesi oluştur
+            # Sistemin ana belleği etkilenmez
+            gecici_mesajlar = [{"role": "system", "content": self.supervisor.ana_kurallar},
+                               {"role": "user", "content": user_input}]
+            cevap, model = self._raw_supervisor_call(gecici_mesajlar=gecici_mesajlar)
+            return cevap, model

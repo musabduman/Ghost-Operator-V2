@@ -48,6 +48,9 @@ class GhostOperatorUI(ctk.CTk):
         self.voice_handler   = VoiceHandler(self)
         self.signal_watcher  = SignalWatcher(self)
         self.librarian       = LibrarianAgent()
+        
+        from core.scheduler import Scheduler
+        self.scheduler       = Scheduler(self)
 
         # ── Telegram köprüsü ──────────────────────────────────────────────────
         # Sadece burada instance oluşturuyoruz, gerçek polling _startup_sequence'ta
@@ -252,6 +255,7 @@ class GhostOperatorUI(ctk.CTk):
         self.log("[SİSTEM]: Uyanış protokolü başlatıldı...", "green")
         self.set_model_label("Aktif Durum: Sistem Uyanıyor...")
         self.librarian.start()  # Kütüphaneci döngüsünü başlat
+        self.scheduler.start()  # Arka plan işçisini (Zamanlayıcı) başlat
         self.telegram_bridge.start_in_background()  # Telegram dinlemeyi başlat
         threading.Thread(target=self.command_handler.run_startup, daemon=True).start()
 
@@ -271,10 +275,16 @@ class GhostOperatorUI(ctk.CTk):
         """
         self.after(0, lambda: self.record_message("user", f"[Telegram/{user}]: {text}"))
 
+        while getattr(self.command_handler, "su_an_mesgul", False):
+            time.sleep(2)
+        
+        self.command_handler.su_an_mesgul = True
         try:
             cevap, _ = self.command_handler.controller(text)
         except Exception as e:
             cevap = f"[Hata] Telegram mesajı işlenirken bir sorun oluştu: {e}"
+        finally:
+            self.command_handler.su_an_mesgul = False
 
         self.after(0, lambda: self.record_message("ghost", cevap))
 

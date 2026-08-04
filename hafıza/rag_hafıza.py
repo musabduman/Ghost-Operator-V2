@@ -140,3 +140,64 @@ class Bellek:
             print(f"[SİSTEM - HAFIZA]: Vektör başarıyla silindi: {metin}")
         except Exception as e:
             print(f"[SİSTEM UYARISI] Bellekten silme başarısız: {e}")
+
+    def bellek_budamasi_yap(self):
+        """Zaman bazlı decay uygular ve confidence < 0.3 olan eski bilgileri siler."""
+        import time
+        try:
+            results = self.collection.get(include=["metadatas", "documents"])
+            if not results["ids"]:
+                return "Bellek boş, budama yapılmadı."
+
+            silinecekler = []
+            guncellenecek_idler = []
+            guncellenecek_metadatalar = []
+
+            su_an = time.time()
+            gun_saniye = 24 * 3600
+            
+            for i, d_id in enumerate(results["ids"]):
+                meta = results["metadatas"][i]
+                if not meta:
+                    continue
+                
+                created_at = meta.get("created_at", su_an)
+                gecen_gun = (su_an - created_at) / gun_saniye
+                
+                if gecen_gun < 1:
+                    continue
+                
+                conf = float(meta.get("confidence", 1.0))
+                count = int(meta.get("confirmation_count", 1))
+                
+                decay_miktari = (gecen_gun * 0.01) / count
+                yeni_conf = conf - decay_miktari
+                
+                if yeni_conf < 0.3:
+                    silinecekler.append(d_id)
+                else:
+                    # Update edilecek
+                    if yeni_conf != conf:
+                        meta["confidence"] = round(yeni_conf, 3)
+                        guncellenecek_idler.append(d_id)
+                        guncellenecek_metadatalar.append(meta)
+            
+            silinen_sayisi = len(silinecekler)
+            guncellenen_sayisi = len(guncellenecek_idler)
+            
+            if silinecekler:
+                self.collection.delete(ids=silinecekler)
+            
+            if guncellenecek_idler:
+                self.collection.update(
+                    ids=guncellenecek_idler,
+                    metadatas=guncellenecek_metadatalar
+                )
+                
+            msg = f"Budama tamamlandı. Silinen (Pruning): {silinen_sayisi}, Puanı Düşürülen (Decay): {guncellenen_sayisi}."
+            print(f"[SİSTEM - HAFIZA]: {msg}")
+            return msg
+        except Exception as e:
+            hata = f"[SİSTEM UYARISI] Bellek budama başarısız: {e}"
+            print(hata)
+            return hata

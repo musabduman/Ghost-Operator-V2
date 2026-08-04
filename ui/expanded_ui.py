@@ -3,7 +3,7 @@ ui/expanded_ui.py — Expanded (tam ekran) mod.
 Sol sidebar: oturum listesi. Sağ alan: klasik chat + araç çubuğu.
 """
 import customtkinter as ctk
-from ui.ui import build_screenshot_button, build_media_buttons
+from ui.ui import build_screenshot_button
 from sessions.session_manager import list_sessions, _friendly_date
 from vison.screenshot import screenshot_al_ve_yorumla
 
@@ -176,18 +176,84 @@ def _build_topbar(app, parent):
     )
     app.model_label.grid(row=0, column=1, padx=8)
 
+    # Sağ: Bildirimler butonu
+    app.btn_bildirim = ctk.CTkButton(
+        bar, text="🔔 (0)", width=60, height=28,
+        font=("Consolas", 12), fg_color="transparent", hover_color="#1a1a1a",
+        text_color="#888888", border_width=1, border_color="#1e1e1e",
+        command=lambda: open_notifications_window(app)
+    )
+    app.btn_bildirim.grid(row=0, column=2, padx=(0, 6))
+
     # Sağ: Ayarlar butonu
     ctk.CTkButton(
         bar, text="⚙", width=32, height=28,
         font=("Consolas", 14), fg_color="transparent", hover_color="#1a1a1a",
         text_color="#555555", border_width=1, border_color="#1e1e1e",
         command=app.open_settings
-    ).grid(row=0, column=2, padx=(0, 6))
+    ).grid(row=0, column=3, padx=(0, 6))
 
     # Sağ: ekran yorumla
     app.ss_button = build_screenshot_button(bar)
     app.ss_button.configure(width=180, height=28, font=("Consolas", 11),command=lambda: screenshot_al_ve_yorumla(app))
-    app.ss_button.grid(row=0, column=3, padx=12)
+    app.ss_button.grid(row=0, column=4, padx=12)
+
+    # Bildirim sayısını güncelleyen döngü
+    _start_notification_updater(app)
+
+
+def _start_notification_updater(app):
+    def update():
+        if not hasattr(app, "btn_bildirim") or not app.btn_bildirim.winfo_exists():
+            return
+        try:
+            if hasattr(app, "command_handler") and hasattr(app.command_handler, "episodic_db"):
+                okunmamis = app.command_handler.episodic_db.okunmamis_bildirimleri_getir()
+                sayi = len(okunmamis)
+                color = "#FFcc00" if sayi > 0 else "#888888"
+                app.btn_bildirim.configure(text=f"🔔 ({sayi})", text_color=color)
+        except Exception as e:
+            print(f"Bildirim güncellenemedi: {e}")
+        app.after(10000, update) # 10 saniyede bir kontrol
+    
+    app.after(5000, update)
+
+def open_notifications_window(app):
+    win = ctk.CTkToplevel(app)
+    win.title("Bildirim Merkezi")
+    win.geometry("500x400")
+    win.attributes("-topmost", True)
+    win.configure(fg_color="#111111")
+    
+    lbl = ctk.CTkLabel(win, text="Son Bildirimler (Okunmamış)", font=("Consolas", 14, "bold"), text_color="#00FFcc")
+    lbl.pack(pady=(15, 5))
+    
+    scroll = ctk.CTkScrollableFrame(win, fg_color="transparent")
+    scroll.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    okunmamis = []
+    if hasattr(app, "command_handler") and hasattr(app.command_handler, "episodic_db"):
+        okunmamis = app.command_handler.episodic_db.okunmamis_bildirimleri_getir()
+    
+    if not okunmamis:
+        ctk.CTkLabel(scroll, text="Şu an yeni bildirim yok.", font=("Consolas", 12), text_color="#666666").pack(pady=20)
+    else:
+        for b in okunmamis:
+            import datetime
+            dt = datetime.datetime.fromtimestamp(b["tarih"]).strftime("%H:%M")
+            f = ctk.CTkFrame(scroll, fg_color="#1a1a1a", corner_radius=6)
+            f.pack(fill="x", pady=4)
+            ctk.CTkLabel(f, text=f"[{dt}]", font=("Consolas", 10), text_color="#555555").pack(anchor="w", padx=8, pady=(4, 0))
+            ctk.CTkLabel(f, text=b["icerik"], font=("Consolas", 12), text_color="#dddddd", wraplength=440, justify="left").pack(anchor="w", padx=8, pady=(0, 6))
+            
+    def _okundu_isaretle():
+        if hasattr(app, "command_handler") and hasattr(app.command_handler, "episodic_db"):
+            app.command_handler.episodic_db.bildirimleri_okundu_isaretle()
+            app.btn_bildirim.configure(text="🔔 (0)", text_color="#888888")
+        win.destroy()
+        
+    btn_kapat = ctk.CTkButton(win, text="Tümünü Okundu İşaretle ve Kapat", fg_color="#2a5a45", hover_color="#3a6a55", command=_okundu_isaretle)
+    btn_kapat.pack(pady=(0, 15))
 
 
 def _build_chat_area(app, parent):

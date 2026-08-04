@@ -90,6 +90,7 @@ class CommandHandler:
         tool_registry.bind_handler("proje_adi_ayarla", self._tool_proje_adi_ayarla)
         tool_registry.bind_handler("uzun_gorev_plani_yap", self._tool_uzun_gorev_plani_yap)
         tool_registry.bind_handler("terminal_cikti_oku", self._tool_terminal_cikti_oku)
+        tool_registry.bind_handler("periyodik_gorev_olustur", self._tool_periyodik_gorev_olustur)
         
         self.aktif_plan = None
         self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
@@ -216,7 +217,7 @@ class CommandHandler:
                     display = self._clean_response_for_display(response)
                     
                     if display and display.strip():
-                        self.app.record_message("ghost", display)
+                        self.app.after(0, lambda: self.app.record_message("ghost", display))
                         if self.app.voice_mode:
                             self._asistan_konus(display)
                                 
@@ -243,7 +244,7 @@ class CommandHandler:
         try:
             cevap, model = self.controller(prompt)
             self._update_model_label(model)
-            self.app.record_message("ghost", cevap)
+            self.app.after(0, lambda: self.app.record_message("ghost", cevap))
             self._asistan_konus(cevap)
             # Başarılı açılışta da mikrofonu başlat
             self.app.after(300, self.app.voice_handler.start_listening)
@@ -254,11 +255,8 @@ class CommandHandler:
             self.app.after(300, self.app.voice_handler.start_listening)
  
     def _agentic_loop(self, user_input: str):
-        # Kullanıcı isteğini modelin kök hafızasına ekle
-        self.controller.supervisor.mesaj_gecmisi.append({"role": "user", "content": user_input})
-        
         try:
-            cevap, model = self.controller._raw_supervisor_call()
+            cevap, model = self.controller(user_input)
             self._update_model_label(model)
             
             final_mesaji = cevap.strip() if cevap else ""
@@ -266,16 +264,16 @@ class CommandHandler:
             if final_mesaji:
                 if getattr(self.app, "_expanded", False):
                     # Streaming animasyonu: kelime kelime yaz
-                    self._stream_to_bubble(final_mesaji)
+                    self.app.after(0, lambda: self._stream_to_bubble(final_mesaji))
                 else:
-                    self.app.record_message("ghost", final_mesaji)
+                    self.app.after(0, lambda: self.app.record_message("ghost", final_mesaji))
                 if self.app.voice_mode:
                     self._asistan_konus(final_mesaji)
                     
         except Exception as e:
             self.app.log(f"SİSTEM: LangGraph Döngüsü Kırıldı: {e}", "red")
             hata_mesaji = "Patron, işlem sırasında bir hata oluştu."
-            self.app.record_message("ghost", hata_mesaji)
+            self.app.after(0, lambda: self.app.record_message("ghost", hata_mesaji))
             if self.app.voice_mode:
                 self._asistan_konus(hata_mesaji)
 
@@ -993,4 +991,37 @@ class CommandHandler:
             self.app.log(f"SİSTEM: Terminal okundu (Son {n} satır)", "green")
             return f"Terminal Çıktısı (Son {n} satır):\n{out}"
         except Exception as e:
-            return f"Terminal okunamadı: {str(e)}"
+            return f"Terminal okunurken hata oluştu: {e}"
+
+    def _tool_periyodik_gorev_olustur(self, gorev_tanimi: str, periyot_saat: float) -> str:
+        try:
+            p_saat = float(periyot_saat)
+            self.episodic_db.gorev_ekle(gorev_tanimi, p_saat, is_system_task=0)
+            self.app.log(f"SİSTEM: Periyodik görev oluşturuldu: {gorev_tanimi} ({p_saat} saat)", "green")
+            return f"Görev başarıyla kaydedildi. Arka planda her {p_saat} saatte bir şu görevi yürüteceğim: {gorev_tanimi}"
+        except Exception as e:
+            self.app.log(f"SİSTEM UYARISI: Görev eklenemedi: {e}", "red")
+            return f"Görev eklenirken hata oluştu: {str(e)}"
+
+    def _tool_periyodik_gorevleri_listele(self) -> str:
+        try:
+            gorevler = self.episodic_db.tum_gorevleri_getir()
+            if not gorevler:
+                return "Şu anda kayıtlı hiçbir periyodik görev bulunmamaktadır."
+            
+            satirlar = ["Aktif Periyodik Görevler:"]
+            for g in gorevler:
+                durum = "Aktif" if g['aktif_mi'] else "Pasif"
+                satirlar.append(f"ID: {g['id']} | Süre: {g['periyot_saat']} Saat | Durum: {durum} | Görev: {g['gorev_tanimi']}")
+            return "\n".join(satirlar)
+        except Exception as e:
+            return f"Görevler listelenirken hata oluştu: {str(e)}"
+
+    def _tool_periyodik_gorev_sil(self, gorev_id: int) -> str:
+        try:
+            gid = int(gorev_id)
+            self.episodic_db.gorev_sil(gid)
+            self.app.log(f"SİSTEM: Periyodik görev silindi (ID: {gid})", "yellow")
+            return f"{gid} ID numaralı görev başarıyla silindi ve iptal edildi."
+        except Exception as e:
+            return f"Görev silinirken hata oluştu: {str(e)}"

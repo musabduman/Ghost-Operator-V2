@@ -30,10 +30,11 @@ class LibrarianAgent:
         JSON Format Şeması:
         [
           {"action": "save", "fact": "Kaydedilecek kalıcı bilgi özeti", "confidence": 0.9},
-          {"action": "update", "old_fact_query": "Eski bilgiyi bulmak için vektör DB sorgusu", "new_fact": "Yeni kalıcı bilgi özeti", "confidence": 0.8}
+          {"action": "update", "old_fact_query": "Eski bilgiyi bulmak için vektör DB sorgusu", "new_fact": "Yeni kalıcı bilgi özeti", "confidence": 0.8, "override": true}
         ]
         
         NOT: confidence değeri 0.0 ile 1.0 arasında bir güven skorudur. Bu bilginin ne kadar kesin ve kalıcı olduğuna dair eminlik dereceni yansıtır.
+        Eğer kullanıcı açıkça geçmiş bir bilgiyi değiştirdiğini, düzelttiğini veya yeni bir durumu dikte ettiğini belirtiyorsa (örn: "artık favori rengim mavi", "proje klasörü değişti"), "override": true bayrağını ekle. Bu, eski bilginin ne kadar güçlü olursa olsun ezilmesini sağlar.
         
         Eğer kaydedilecek hiçbir bilgi yoksa sadece boş bir liste döndür: []
         
@@ -164,34 +165,38 @@ class LibrarianAgent:
                     elif action == "update":
                         old_query = islem.get("old_fact_query")
                         new_fact = islem.get("new_fact")
+                        override = islem.get("override", False)
+
                         if old_query and new_fact:
                             # Vektör DB'de eski bilgiyi arat
                             eski_kayitlar = self.bellek.sorgula_metadata_ile(old_query, limit=1)
+
                             if eski_kayitlar:
                                 eski_kayit = eski_kayitlar[0]
                                 old_meta = eski_kayit["metadata"]
                                 confirmations = int(old_meta.get("confirmation_count", 1))
                                 
                                 # Çelişki / Halüsinasyon koruması
-                                if confirmations >= 3 and confidence < 0.8:
-                                    print(f"[KÜTÜPHANECİ UYARISI]: Güncelleme REDDEDİLDİ. Eski bilgi çok güçlü (x{confirmations}), yeni bilgi zayıf (G: {confidence}). -> {new_fact}")
+                                if confirmations >= 3 and confidence < 0.8 and not override:
+                                    print(f"[KÜTÜPHANECİ UYARISI]: Güncelleme REDDEDİLDİ. Eski bilgi çok güçlü (x{confirmations}), yeni bilgi zayıf (G: {confidence}) ve override yok. -> {new_fact}")
                                     continue
                                 
                                 self.bellek.bellekten_sil(eski_kayit["document"])
-                                print(f"[KÜTÜPHANECİ]: Eski çelişkili bilgi silindi -> {eski_kayit['document']}")
+                                print(f"[KÜTÜPHANECİ]: Eski çelişkili bilgi silindi (Override: {override}) -> {eski_kayit['document']}")
                             
                             # Yeni bilgiyi yaz
                             metadata = {"created_at": time.time(), "confidence": confidence, "confirmation_count": 1}
                             self.bellek.bellege_yaz(new_fact, metadata=metadata)
                             print(f"[KÜTÜPHANECİ]: Güncel bilgi RAG belleğine eklendi -> {new_fact}")
+                            
+                # İşlenen satırları sadece BAŞARILI bir JSON parse ve işlem sonrası işaretle
+                self._isaretle(mesajlar, loglar)
+                
             except Exception as parse_error:
                 print(f"[KÜTÜPHANECİ HATA]: JSON parse hatası. Ham yanıt: {raw_content} | Hata: {parse_error}")
                 
         except Exception as api_error:
             print(f"[KÜTÜPHANECİ HATA]: API hatası: {api_error}")
-            
-        # İşlenen satırları işaretle
-        self._isaretle(mesajlar, loglar)
 
     def _isaretle(self, mesajlar, loglar):
         if mesajlar:
