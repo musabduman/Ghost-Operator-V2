@@ -20,7 +20,6 @@ import importlib.util
 from hafıza.rag_hafıza import Bellek
 from hafıza.episodic_db import EpisodicDB
 from kontrol.spotify import SpotifyManager
-from ai.llm import GhostController, ChatLLM
 from ui.compact_ui import set_voice_state
 from vison.vison import minimax_vision_analiz
 from tools.browser_tool import get_dom_elements
@@ -56,14 +55,35 @@ class CommandHandler:
         self.son_komut_sesli = False
         self.bellek = Bellek()
         self.episodic_db = EpisodicDB()
-        self.controller = GhostController(tool_runner=self._execute_tool_call)
-        # gorev_bitti asla _execute_tool_call'dan geçmediği için aktif_plan'ı
-        # sıfırlamanın tek güvenilir yeri: GhostController'ın her turu
-        # (başarılı/başarısız/limit aşımı fark etmez) kesin olarak bitirdiği an.
-        self.controller.on_task_end = self.gorevi_sonlandir
+        from core.config import USE_DOCKER_CORE
+        
+        if USE_DOCKER_CORE:
+            self.controller = self._proxy_controller
+        else:
+            from ai.llm import GhostController
+            self.controller = GhostController(tool_runner=self._execute_tool_call)
+            # gorev_bitti asla _execute_tool_call'dan geçmediği için aktif_plan'ı
+            # sıfırlamanın tek güvenilir yeri: GhostController'ın her turu
+            # (başarılı/başarısız/limit aşımı fark etmez) kesin olarak bitirdiği an.
+            self.controller.on_task_end = self.gorevi_sonlandir
         self.spotify = SpotifyManager()
         self.islem_kuyrugu = queue.Queue()
         self.su_an_mesgul = False  
+
+    def _proxy_controller(self, user_input: str):
+        import requests
+        from core.config import CORE_API_URL
+        try:
+            res = requests.post(CORE_API_URL, json={"message": user_input}, timeout=600)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("status") == "busy":
+                    return "Şu an meşgulüm.", "PROXY"
+                return data.get("response", ""), "PROXY"
+            else:
+                return f"[Hata] Core Sunucu Hatası: {res.status_code}", "PROXY"
+        except Exception as e:
+            return f"[Hata] Core Sunucuya bağlanılamadı: {e}", "PROXY"
 
         # Single Source of Truth: Tüm çalıştırma fonksiyonlarını tool_registry'ye bağla
         tool_registry.bind_handler("arama", self._tool_search)
@@ -621,7 +641,8 @@ class CommandHandler:
             self.app.log("SİSTEM: Doğrudan masaüstü analizi için LLaVA Gözleri Açılıyor...", "green")
             soru = "Şu an bilgisayarın masaüstü ekranına bakıyorsun. Ekranda hangi uygulamalar, açık pencereler veya tıklanabilir öğeler var? Konumlarını belirt."
 
-        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_temp_vision.png")
+        from core.config import TEMP_DIR
+        kayit_yolu = os.path.join(TEMP_DIR, "ghost_temp_vision.png")
         try:
             ekran = PIL.ImageGrab.grab(all_screens=True)
             ekran.save(kayit_yolu)
@@ -634,11 +655,35 @@ class CommandHandler:
 
     def _tool_whatsapp_gonder(self, kisi: str, mesaj: str) -> str:
         self.app.log(f"SİSTEM: WhatsApp'tan '{kisi}' kişisine mesaj gönderiliyor...", "green")
-        return whatsapp_mesaj_gonder(kisi, mesaj)
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        if USE_LOCAL_BRIDGE:
+            import requests
+            try:
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_mesaj_gonder", "parametreler": {"kisi": kisi, "mesaj": mesaj}}, timeout=30)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("mesaj", "WhatsApp mesajı gönderildi (Local Bridge).")
+                return f"HATA: Local Bridge Hatası: {res.text}"
+            except Exception as e:
+                return f"HATA: Local Bridge'e bağlanılamadı: {e}"
+        else:
+            return whatsapp_mesaj_gonder(kisi, mesaj)
 
     def _tool_whatsapp_oku(self) -> str:
         self.app.log("SİSTEM: WhatsApp ekranı Vision ile okunuyor...", "green")
-        return whatsapp_ekrani_yorumla()
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        if USE_LOCAL_BRIDGE:
+            import requests
+            try:
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_ekrani_yorumla", "parametreler": {}}, timeout=60)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("mesaj", "WhatsApp ekranı okundu (Local Bridge).")
+                return f"HATA: Local Bridge Hatası: {res.text}"
+            except Exception as e:
+                return f"HATA: Local Bridge'e bağlanılamadı: {e}"
+        else:
+            return whatsapp_ekrani_yorumla()
 
     def _tool_arac_calistir(self, dosya: str, fonksiyon: str, parametreler: dict) -> str:
         try:
@@ -702,31 +747,44 @@ class CommandHandler:
     
     def _tool_take_screenshot(self, ne_arayacagim: str) -> str:
         self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{ne_arayacagim}'", "green")
-        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_auto_screenshot.png")
-        
-        try:
-            self.app.iconify()
-            time.sleep(0.5) 
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        if USE_LOCAL_BRIDGE:
+            import requests
+            try:
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "ekran_goruntusu_al", "parametreler": {"mesaj": ne_arayacagim}}, timeout=60)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("mesaj", "Ekran yorumlandı (Local Bridge).")
+                return f"HATA: Local Bridge Hatası: {res.text}"
+            except Exception as e:
+                return f"HATA: Local Bridge'e bağlanılamadı: {e}"
+        else:
+            from core.config import TEMP_DIR
+            kayit_yolu = os.path.join(TEMP_DIR, "ghost_auto_screenshot.png")
             
-            import PIL.ImageGrab
-            ekran = PIL.ImageGrab.grab(all_screens=True)
-            ekran.save(kayit_yolu)
-            
-            self.app.deiconify()
-            
-            self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
-
-            from vison.vison import minimax_vision_analiz
-            basarili_mi, saf_kod, mesaj = minimax_vision_analiz(ne_arayacagim, kayit_yolu)
-            
-            if basarili_mi and saf_kod:
-                return f"GÖZLEM SONUCU: Ekranda şu kod bulundu:\n\n{saf_kod}\n\nLütfen Kullanıcının asıl isteğine göre bu kodu kullanarak işlem yap."
-            
-            return f"GÖZLEM SONUCU: {mesaj}\n\n[ÖLÜMCÜL SİSTEM TALİMATI: Ekranı başarıyla gördün ve özetledin. ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. Hiçbir [ETİKET] kullanmadan, doğrudan gördüklerini Patron'a kendi havalı tarzınla açıkla ve görevi bitir.]"
-            
-        except Exception as e:
-            self.app.deiconify()
-            return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
+            try:
+                self.app.iconify()
+                time.sleep(0.5) 
+                
+                import PIL.ImageGrab
+                ekran = PIL.ImageGrab.grab(all_screens=True)
+                ekran.save(kayit_yolu)
+                
+                self.app.deiconify()
+                
+                self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
+    
+                from vison.vison import minimax_vision_analiz
+                basarili_mi, saf_kod, mesaj = minimax_vision_analiz(ne_arayacagim, kayit_yolu)
+                
+                if basarili_mi and saf_kod:
+                    return f"GÖZLEM SONUCU: Ekranda şu kod bulundu:\n\n{saf_kod}\n\nLütfen Kullanıcının asıl isteğine göre bu kodu kullanarak işlem yap."
+                
+                return f"GÖZLEM SONUCU: {mesaj}\n\n[ÖLÜMCÜL SİSTEM TALİMATI: Ekranı başarıyla gördün ve özetledin. ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. Hiçbir [ETİKET] kullanmadan, doğrudan gördüklerini Patron'a kendi havalı tarzınla açıkla ve görevi bitir.]"
+                
+            except Exception as e:
+                self.app.deiconify()
+                return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
         
     def _tool_search(self, sorgu: str) -> str:
         self.app.log(f"SİSTEM: Plan A - DuckDuckGo ile hızlı arama yapılıyor: '{sorgu}'...", "green")
@@ -769,7 +827,8 @@ class CommandHandler:
         
         safe_query = urllib.parse.quote(query)
         url = f"https://www.google.com/search?q={safe_query}"
-        kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_temp_search.png")
+        from core.config import TEMP_DIR
+        kayit_yolu = os.path.join(TEMP_DIR, "ghost_temp_search.png")
         
         try:
             with sync_playwright() as p:
@@ -920,11 +979,16 @@ class CommandHandler:
         return "Belirtilen yol bir klasör değil veya bulunamadı."
 
     def _tool_write_file(self, yol: str, icerik: str, aciklama: str = "(Ghost açıklama girmedi)") -> str:
-        # Göreceli yol ya da sadece dosya adı verilmişse → tools/ klasörüne yönlendir
-        # Mutlak yol verilmişse (C:\... gibi) dokunma
+        # Dinamik Dosya Tarama
+        from core.fs import dosya_bul
+        durum = self.episodic_db.son_aktif_projeyi_getir()
+        aktif_proje = durum.get("aktif_dizin") if durum else None
+        yol = dosya_bul(yol, aktif_proje)
+        
+        # Göreceli yol ya da sadece dosya adı verilmişse ve hala bulunamamışsa
         if not os.path.isabs(yol):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            yol = os.path.join(base_dir, "tools", yol)
+            yol = os.path.join(base_dir, yol)
 
         # ── Human-in-the-Loop: Var olan dosyayı değiştiriyorsa diff göster ────
         if os.path.exists(yol):
@@ -932,22 +996,49 @@ class CommandHandler:
                 with open(yol, "r", encoding="utf-8") as f:
                     eski_icerik = f.read()
                 if eski_icerik.strip() != icerik.strip():  # gerçekten değişiklik var mı?
-                    import threading as _th
-                    from ui.diff_dialog import show_diff_dialog
-                    event = _th.Event()
-                    result_holder = {"approved": False, "reason": ""}
-                    show_diff_dialog(self.app, yol, eski_icerik, icerik, aciklama, event, result_holder)
-
-                    timed_out = not event.wait(timeout=120)
-                    if timed_out:
-                        # Süre doldu → otomatik onayla
-                        pass
-                    elif not result_holder["approved"]:
-                        reason = result_holder.get("reason", "").strip()
-                        msg = "Kullanıcı bu değişikliği onaylamadı."
-                        if reason:
-                            msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
-                        return msg
+                    from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+                    if USE_LOCAL_BRIDGE:
+                        import requests
+                        try:
+                            res = requests.post(
+                                LOCAL_BRIDGE_URL.replace("/execute", "/show_diff"),
+                                json={
+                                    "dosya_yolu": yol,
+                                    "eski_icerik": eski_icerik,
+                                    "yeni_icerik": icerik,
+                                    "aciklama": aciklama
+                                },
+                                timeout=130
+                            )
+                            if res.status_code == 200:
+                                data = res.json()
+                                if not data.get("approved"):
+                                    reason = data.get("reason", "").strip()
+                                    msg = "Kullanıcı bu değişikliği onaylamadı."
+                                    if reason:
+                                        msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
+                                    return msg
+                            else:
+                                self.app.log(f"[UYARI] Local Bridge Diff hatası: {res.text}", "yellow")
+                        except Exception as e:
+                            self.app.log(f"[UYARI] Local Bridge Diff'e bağlanılamadı: {e}", "yellow")
+                    else:
+                        import threading as _th
+                        from ui.diff_dialog import show_diff_dialog
+                        event = _th.Event()
+                        result_holder = {"approved": False, "reason": ""}
+                        show_diff_dialog(self.app, yol, eski_icerik, icerik, aciklama, event, result_holder)
+    
+                        timed_out = not event.wait(timeout=120)
+                        if timed_out:
+                            # Süre doldu → otomatik onayla
+                            pass
+                        elif not result_holder["approved"]:
+                            reason = result_holder.get("reason", "").strip()
+                            msg = "Kullanıcı bu değişikliği onaylamadı."
+                            if reason:
+                                msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
+                            return msg
             except Exception as e:
                 self.app.log(f"[UYARI] Diff hesaplanamadı: {e}", "yellow")
 
@@ -960,6 +1051,11 @@ class CommandHandler:
         return f"Kod başarıyla '{yol}' konumuna kaydedildi."
 
     def _tool_run_code(self, yol: str) -> str:
+        from core.fs import dosya_bul
+        durum = self.episodic_db.son_aktif_projeyi_getir()
+        aktif_proje = durum.get("aktif_dizin") if durum else None
+        yol = dosya_bul(yol, aktif_proje)
+        
         self.app.log(f"SİSTEM: '{yol}' çalıştırılıyor...", "green")
         result = kodu_calistir(yol)
         if result["basarili"]:
@@ -970,6 +1066,11 @@ class CommandHandler:
         return f"Kod çalıştırılırken hata verdi. Lütfen hatayı inceleyip düzelt:\n{result['hata']}"
 
     def _tool_read_file(self, yol: str) -> str:
+        from core.fs import dosya_bul
+        durum = self.episodic_db.son_aktif_projeyi_getir()
+        aktif_proje = durum.get("aktif_dizin") if durum else None
+        yol = dosya_bul(yol, aktif_proje)
+        
         if os.path.isfile(yol):
             content = open(yol, encoding="utf-8").read()
             self.app.log(f"SİSTEM: '{yol}' okundu.", "green")

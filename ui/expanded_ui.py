@@ -433,7 +433,8 @@ def _open_log_file():
     """Ghost log dosyasını varsayılan metin editörüyle aç."""
     import os
     import subprocess
-    log_path = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "logs", "ghost.log")
+    from core.config import LOG_DIR
+    log_path = os.path.join(LOG_DIR, "ghost.log")
     if not os.path.exists(log_path):
         return
     try:

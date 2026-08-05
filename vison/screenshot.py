@@ -13,7 +13,8 @@ def screenshot_al_ve_yorumla(self, soru=None):
     UI sadece 'self' gönderir. Kayıt yolunu bu fonksiyon kendisi üretir.
     """
     # Kayıt yolunu otomatik belirle
-    kayit_yolu = os.path.join(os.path.expanduser("~"), "ghost_screenshot.png")
+    from core.config import TEMP_DIR
+    kayit_yolu = os.path.join(TEMP_DIR, "ghost_screenshot.png")
     
     # Ghost'un arayüzünü gizle (kendi uygulamasının ekran görüntüsünü çekmesin)
     self.iconify()
