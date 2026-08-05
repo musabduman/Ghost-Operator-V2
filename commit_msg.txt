@@ -1,0 +1,32 @@
+V2.0: Core Server, Local Bridge ve Tam Dockerization (Mikroservis Mimarisi)
+
+Bu devasa güncelleme ile Ghost, tek parça monolitik bir uygulamadan, bağımsız
+parçalara ayrılmış modern bir istemci-sunucu (Client-Server) mimarisine dönüştürüldü.
+
+Yapılan Temel Değişiklikler:
+1. **Core Server & Dockerization:**
+   - Ağır AI modelleri (LangChain, ChromaDB) ve otonom karar alma mekanizmaları 
+     `core_server.py` adında bağımsız bir FastAPI sunucusuna taşındı.
+   - Tüm bu altyapının izole çalışabilmesi için `Dockerfile` ve `docker-compose.yml` eklendi.
+   - Veritabanı ve loglar için kalıcı Docker Volume'ları ayarlandı.
+
+2. **Local Bridge & Güvenlik:**
+   - Docker içinden kullanıcının bilgisayarına müdahale edilebilmesi için 8000 portunda 
+     çalışan `local_bridge/main.py` aracı (proxy) geliştirildi.
+   - Araçlar artık `permissions.json` üzerinden izin kontrolünden geçerek çalışıyor.
+   - Ekran Görüntüsü, WhatsApp mesajı, Tarayıcı işlemleri ve "Diff Onay Penceresi" 
+     (`diff_runner.py`) tamamen bu köprü üzerinden HTTP istekleriyle yönetiliyor.
+
+3. **Dinamik Dosya Sistemi (Hardcoded Path Kaldırıldı):**
+   - Sabit "C:\Users\..." yolları yerine `core/fs.py` üzerinden akıllı 
+     `dosya_bul` ve `derin_arama` yetenekleri entegre edildi.
+   - Tüm okuma, yazma ve kod çalıştırma işlemleri artık dinamik dizin çözümlemesi yapıyor.
+
+4. **Frontend Ayrıştırması:**
+   - `main.py` ve UI araçları artık LangChain bağımlılıklarını direkt başlatmak yerine,
+     `USE_DOCKER_CORE` bayrağı ile yükü 8001 portuna (Core API) devrediyor.
+
+5. **Test Altyapısı & Başlatıcılar:**
+   - `pytest` kullanılarak dosya okuma, Local Bridge ve Core Server için uçtan uca (E2E) testler yazıldı (`tests/`).
+   - Masaüstü kullanıcıları için tek tıkla sistemi ayağa kaldıran `GhostLauncher.bat` 
+     ve PyInstaller derleme betiği (`build_exe.bat`) eklendi.

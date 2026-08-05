@@ -5,10 +5,8 @@ import json
 
 class EpisodicDB:
     def __init__(self):
-        # Vektör DB ile aynı klasörde olması için ~/Desktop/Ghost_Memory dizinini kullanıyoruz
-        db_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory")
-        os.makedirs(db_dir, exist_ok=True)
-        self.db_path = os.path.join(db_dir, "ghost_memory.db")
+        from core.config import DB_DIR
+        self.db_path = os.path.join(DB_DIR, "ghost_memory.db")
         self._create_tables()
 
     def _get_connection(self):

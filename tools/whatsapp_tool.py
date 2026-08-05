@@ -19,9 +19,8 @@ import queue
 import threading
 from playwright.sync_api import sync_playwright
 
-USER_DATA_DIR = os.path.join(
-    os.path.expanduser("~"), "Desktop", "Ghost_Memory", "whatsapp_session"
-)
+from core.config import GHOST_DATA_DIR
+USER_DATA_DIR = os.path.join(GHOST_DATA_DIR, "whatsapp_session")
 
 # WhatsApp Web arayüz dili TR/EN seçicileri
 CHAT_LIST_SELECTOR = 'div[id="pane-side"], div[id="side"]'
@@ -214,9 +213,8 @@ class _WhatsAppWorker(threading.Thread):
         elif cmd == "ekran_yorumla":
             vision_yorumla_fn = args.get("vision_yorumla_fn")
 
-            screenshot_dir = os.path.join(
-                os.path.expanduser("~"), "Desktop", "Ghost_Memory", "whatsapp_screenshots"
-            )
+            from core.config import TEMP_DIR
+            screenshot_dir = os.path.join(TEMP_DIR, "whatsapp_screenshots")
             os.makedirs(screenshot_dir, exist_ok=True)
             screenshot_path = os.path.join(screenshot_dir, f"wa_{int(time.time())}.png")
 

@@ -7,7 +7,8 @@ import json
 import datetime
 import customtkinter as ctk
 
-DB_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "ghost_memory.db")
+from core.config import DB_DIR
+DB_PATH = os.path.join(DB_DIR, "ghost_memory.db")
 
 # ── Renk sabitleri ────────────────────────────────────────────────────────────
 BG       = "#0a0a0a"

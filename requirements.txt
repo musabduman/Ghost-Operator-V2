@@ -1,21 +1,19 @@
-edge-tts
-pygame
-chromadb
-ollama
-sounddevice
-scipy
-SpeechRecognition
-webbrowser; python_version<'3.0' # Genellikle built-in gelir ama güvende kalsın
-keyboard
-spotipy
-python-dotenv
+# Core
+fastapi
+uvicorn
+pydantic
+langgraph
+langchain
+langchain-openai
+langchain-anthropic
+openai
 requests
-duckduckgo_search
-trafilatura
+python-dotenv
+sqlite3
+chromadb
+pytest
+# UI ve masaüstü köprüsü bağımlılıkları (Masaüstü için)
 customtkinter
-vosk
+pygame
 Pillow
-pytesseract
-groq
-lxml_html_clean
-python-telegram-bot
+playwright

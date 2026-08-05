@@ -7,7 +7,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 
-LOG_DIR  = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "logs")
+from core.config import LOG_DIR
 LOG_FILE = os.path.join(LOG_DIR, "ghost.log")
 
 # Hafıza (Kütüphaneci) loglarını dosyaya yazma — sadece terminale gitsin

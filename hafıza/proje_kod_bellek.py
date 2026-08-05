@@ -14,7 +14,8 @@ class ProjeKodBellek:
     """
 
     def __init__(self, collection_name="proje_kod"):
-        db_path = os.path.join(os.path.expanduser("~"), "Desktop", "Ghost_Memory", "VektorDB")
+        from core.config import DB_DIR
+        db_path = os.path.join(DB_DIR, "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name=collection_name)
         self.api_url = "http://localhost:11434/api/embeddings"

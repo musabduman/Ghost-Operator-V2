@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  ghost-core:
+    build: .
+    container_name: ghost_backend
+    restart: always
+    ports:
+      - "8001:8001"
+    volumes:
+      - ghost_data:/app/Ghost_Data
+    environment:
+      - USE_LOCAL_BRIDGE=True
+      - LOCAL_BRIDGE_URL=http://host.docker.internal:8000/execute
+      # Ollama yerel makinedeyse:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  ghost_data:

@@ -110,15 +110,21 @@ class ChatLLM(BaseLLM):
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
 
     def load_history(self, gecmis_mesajlar: list):
-        """Bir oturuma geçiş yapıldığında geçmiş mesajları yükler."""
+        """Bir oturuma geçiş yapıldığında geçmiş mesajları Sistem bağlamı olarak yükler."""
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+        if not gecmis_mesajlar:
+            return
+            
+        # Format Drift engellemek için eski mesajlar düz 'user/assistant' mesajları yerine
+        # system promptunun sonuna bir özet bloğu olarak eklenir. Böylece model araçsız (tool_call olmayan) 
+        # düz metin geçmişi görüp onu taklit etmeye (imitation) çalışmaz.
+        context_str = "\n\n[ÖNCEKİ OTURUM ÖZETİ (Senin önceki cevapların buradadır. Bunlar bağlam amaçlıdır, cevap formatı olarak taklit ETME.)]\n"
         for msg in gecmis_mesajlar:
-            role = msg.get("role") if msg.get("role") in ("assistant", "tool", "user") else "user"
+            role_tr = "Patron" if msg.get("role") == "user" else "Ghost"
             content = msg.get("content") or msg.get("text") or ""
-            temiz_msg = {"role": role, "content": content}
-            if msg.get("tool_calls"):
-                temiz_msg["tool_calls"] = msg["tool_calls"]
-            self.mesaj_gecmisi.append(temiz_msg)
+            context_str += f"{role_tr}: {content}\n"
+            
+        self.mesaj_gecmisi[0]["content"] += context_str
 
     def _raw_call(self, messages=None, tools=None) -> dict:
         """Artık ham metin değil, Ollama'nın döndürdüğü TAM message objesini
@@ -455,6 +461,25 @@ class GhostController:
                 ilk_satir = degerlendirme.split("\n")[0].strip()
                 
                 if "1" in ilk_satir:
+                    # Görev başarıyla onaylandığında, açık kalan 'gorev_bitti' tool_call'ını kapatmak için
+                    # boş mesaj yerine sahte bir tool observation dönüyoruz. Yoksa API hata verir/model kafası karışır.
+                    tc_id = None
+                    for m in reversed(state["messages"]):
+                        if m.get("role") == "assistant" and m.get("tool_calls"):
+                            for tc in m["tool_calls"]:
+                                if tc["function"]["name"] == "gorev_bitti":
+                                    tc_id = tc.get("id")
+                                    break
+                            if tc_id:
+                                break
+                                
+                    if tc_id:
+                        return {"messages": [{
+                            "role": "tool",
+                            "content": "Görev başarıyla tamamlandı ve eleştirmenden onay aldı.",
+                            "tool_call_id": tc_id,
+                            "name": "gorev_bitti"
+                        }]}
                     return {"messages": []}
                 else:
                     # 0 durumunda açıklama alt satırlardadır
