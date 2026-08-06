@@ -63,7 +63,19 @@ class GhostOperatorUI(ctk.CTk):
 
         # ── Pencere + UI ──────────────────────────────────────────────────────
         self._setup_window()
+        self._apply_user_theme()
         self._load_compact()
+
+    def _apply_user_theme(self):
+        from core.config import load_user_prefs
+        prefs = load_user_prefs()
+        bg = prefs.get("theme_bg", "#1e1e24").strip()
+        if bg.startswith("#"):
+            try:
+                self.configure(fg_color=bg)
+            except Exception:
+                pass
+
 
         # ── Başlangıç ─────────────────────────────────────────────────────────
         self._play_startup_sound()

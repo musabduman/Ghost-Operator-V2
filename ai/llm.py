@@ -44,6 +44,17 @@ class ChatLLM(BaseLLM):
         self.model = model
         self.api_url = "http://localhost:11434/api/chat"
         self.os_name = platform.system()
+        
+        from core.config import load_user_prefs
+        prefs = load_user_prefs()
+        lang = prefs.get("language", "Türkçe")
+        rules = prefs.get("custom_rules", "").strip()
+        
+        kisisellestirme_metni = f"\n        [DİL ZORUNLULUĞU]\n        Bütün konuşmalarını ve cevaplarını kesinlikle {lang} dilinde vermelisin.\n"
+        if rules:
+            kisisellestirme_metni += f"\n        [ÖZEL KULLANICI KURALLARI (KESİNLİKLE UYULACAK)]\n{rules}\n"
+            
+        kisisellestirme_metni += "\n        [SİSTEMİ KAPATMA KURALI]\n        Kullanıcı senden uygulamayı kapatmanı, vedalaşmanı veya uyku moduna geçmeni istediğinde (örn: 'görüşürüz', 'kapan', 'çıkış yap') SADECE [[GHOST_SHUTDOWN]] yaz ve başka hiçbir metin üretme. Ancak eğer KULLANICI KURALLARI'nda bu kelimeler geçtiğinde kapanmaman söylenmişse kapanma ve kurala uygun davran.\n"
 
         self.ana_kurallar = rf"""
         [KİMLİK]
@@ -95,6 +106,7 @@ class ChatLLM(BaseLLM):
         4. BAĞIMLILIKLAR: Eğer proje Node.js ise dosyaları yazdıktan sonra kodu_calistir ile 'cd <proje_yolu> && npm install' komutunu çalıştır. Python projesinde pip install gerektiriyorsa aynısını yap.
         5. BİTİŞTE AÇIK: Projeyi bitirince kodu_calistir ile projeyi başlat (node server.js, python app.py vb.) veya index.html gibi statik siteyse uygulama_ac ile tarayıcıda aç.
         6. DOSYA TUTARLILIĞI: Birden fazla dosya yazarken 'script.js', 'style.css' gibi referans verilen dosya isimleri her dosyada birebir aynı olmalı. İlk dosyada belirlediğin yapıyı sonraki dosyalarda da koru.
+        {kisisellestirme_metni}
         """
 
         tool_klasoru = os.path.join(os.getcwd(), "tools")

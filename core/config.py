@@ -5,11 +5,11 @@ import os
 GHOST_DATA_DIR = os.getenv("GHOST_DATA_DIR", os.path.join(os.path.expanduser("~"), "Ghost_Data"))
 
 # Docker'a geçildiğinde True yapılacak ve HTTP üzerinden masaüstü servisine bağlanılacak
-USE_LOCAL_BRIDGE = os.getenv("USE_LOCAL_BRIDGE", "False").lower() == "true"
+USE_LOCAL_BRIDGE = os.getenv("USE_LOCAL_BRIDGE", "True").lower() == "true"
 LOCAL_BRIDGE_URL = os.getenv("LOCAL_BRIDGE_URL", "http://host.docker.internal:8000/execute")
 
 # Masaüstü uygulaması Docker'daki Core API'yi mi kullanacak?
-USE_DOCKER_CORE = os.getenv("USE_DOCKER_CORE", "False").lower() == "true"
+USE_DOCKER_CORE = os.getenv("USE_DOCKER_CORE", "True").lower() == "true"
 CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:8001/chat")
 
 # Veritabanları (EpisodicDB, ChromaDB)
@@ -25,3 +25,31 @@ TEMP_DIR = os.path.join(GHOST_DATA_DIR, "temp")
 os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# ── Kullanıcı Tercihleri (Tema, Dil, Kurallar) ──────────────────────────────
+import json
+USER_PREFS_FILE = os.path.join(GHOST_DATA_DIR, "user_prefs.json")
+
+def load_user_prefs() -> dict:
+    defaults = {
+        "theme_bg": "#1e1e24",
+        "theme_fg": "#ffffff",
+        "language": "Türkçe",
+        "custom_rules": ""
+    }
+    if not os.path.exists(USER_PREFS_FILE):
+        return defaults
+    try:
+        with open(USER_PREFS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            # Eksik anahtarları default ile doldur
+            for k, v in defaults.items():
+                if k not in data:
+                    data[k] = v
+            return data
+    except Exception:
+        return defaults
+
+def save_user_prefs(prefs: dict):
+    with open(USER_PREFS_FILE, "w", encoding="utf-8") as f:
+        json.dump(prefs, f, ensure_ascii=False, indent=4)

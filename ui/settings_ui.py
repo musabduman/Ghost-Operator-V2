@@ -4,6 +4,7 @@ apı_key.env dosyasından değerleri okur, değiştirir ve kaydeder.
 """
 import os
 import customtkinter as ctk
+from core.config import load_user_prefs, save_user_prefs
 
 ENV_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -56,6 +57,7 @@ def _write_env(values: dict):
 def open_settings_window(app):
     """Ayarlar penceresini aç."""
     env = _read_env()
+    prefs = load_user_prefs()
 
     win = ctk.CTkToplevel(app)
     win.title("Ghost Ayarları")
@@ -81,6 +83,8 @@ def open_settings_window(app):
                           text_color="#aaaaaa", text_color_disabled="#333333")
     tabs.pack(fill="both", expand=True, padx=0, pady=0)
 
+    tabs.add("🎨 Kişiselleştirme")
+    tabs.add("📜 Kurallar")
     tabs.add("🤖 Model")
     tabs.add("🔑 API Anahtarları")
     tabs.add("🔊 Ses")
@@ -119,6 +123,39 @@ def open_settings_window(app):
 
         entries[key] = entry
         return entry
+
+    # ── Kişiselleştirme sekmesi ─────────────────────────────────────────────
+    kis_tab = tabs.tab("🎨 Kişiselleştirme")
+    kis_tab.grid_columnconfigure(0, weight=1)
+    kis_tab.grid_columnconfigure(1, weight=0)
+
+    ctk.CTkLabel(kis_tab, text="Ghost Dili", font=("Consolas", 11), text_color="#777777", anchor="w").grid(row=0, column=0, padx=16, pady=(10, 0), sticky="w")
+    lang_combo = ctk.CTkComboBox(kis_tab, values=["Türkçe", "English", "Deutsch", "Español", "Français"], font=("Consolas", 12), fg_color="#111111", border_color="#222222", button_color="#222222")
+    lang_combo.set(prefs.get("language", "Türkçe"))
+    lang_combo.grid(row=1, column=0, padx=16, pady=(2, 0), sticky="ew")
+    entries["_prefs_language"] = lang_combo
+
+    ctk.CTkLabel(kis_tab, text="Arka Plan Rengi (Örn: #1e1e24)", font=("Consolas", 11), text_color="#777777", anchor="w").grid(row=2, column=0, padx=16, pady=(10, 0), sticky="w")
+    bg_entry = ctk.CTkEntry(kis_tab, font=("Consolas", 12), fg_color="#111111", border_color="#222222")
+    bg_entry.insert(0, prefs.get("theme_bg", "#1e1e24"))
+    bg_entry.grid(row=3, column=0, padx=16, pady=(2, 0), sticky="ew")
+    entries["_prefs_theme_bg"] = bg_entry
+
+    ctk.CTkLabel(kis_tab, text="Yazı Rengi (Örn: #ffffff)", font=("Consolas", 11), text_color="#777777", anchor="w").grid(row=4, column=0, padx=16, pady=(10, 0), sticky="w")
+    fg_entry = ctk.CTkEntry(kis_tab, font=("Consolas", 12), fg_color="#111111", border_color="#222222")
+    fg_entry.insert(0, prefs.get("theme_fg", "#ffffff"))
+    fg_entry.grid(row=5, column=0, padx=16, pady=(2, 0), sticky="ew")
+    entries["_prefs_theme_fg"] = fg_entry
+    
+    # ── Kurallar sekmesi ───────────────────────────────────────────────────
+    kurallar_tab = tabs.tab("📜 Kurallar")
+    kurallar_tab.pack_propagate(False)
+    
+    ctk.CTkLabel(kurallar_tab, text="Ghost için Özel Davranış Kuralları (Örn: Görüşürüz deyince kapanma)", font=("Consolas", 11), text_color="#777777").pack(pady=(10, 5), padx=16, anchor="w")
+    rules_box = ctk.CTkTextbox(kurallar_tab, font=("Consolas", 12), fg_color="#111111", border_color="#222222", border_width=1)
+    rules_box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+    rules_box.insert("1.0", prefs.get("custom_rules", ""))
+    entries["_prefs_custom_rules"] = rules_box
 
     # ── Model sekmesi ──────────────────────────────────────────────────────────
     model_tab = tabs.tab("🤖 Model")
@@ -210,14 +247,27 @@ def open_settings_window(app):
 
     def _save():
         new_env = dict(env)  # mevcut değerleri koru
+        new_prefs = dict(prefs)
+        
         for key, widget in entries.items():
-            if isinstance(widget, ctk.CTkSlider):
-                new_env[key] = f"{widget.get():.1f}"
+            if key.startswith("_prefs_"):
+                pref_key = key.replace("_prefs_", "")
+                if isinstance(widget, ctk.CTkTextbox):
+                    new_prefs[pref_key] = widget.get("1.0", "end-1c").strip()
+                elif isinstance(widget, ctk.CTkComboBox):
+                    new_prefs[pref_key] = widget.get()
+                else:
+                    new_prefs[pref_key] = widget.get().strip()
             else:
-                val = widget.get().strip()
-                if val:  # Boş bırakılmışsa eski değer korunsun
-                    new_env[key] = val
+                if isinstance(widget, ctk.CTkSlider):
+                    new_env[key] = f"{widget.get():.1f}"
+                else:
+                    val = widget.get().strip()
+                    if val:  # Boş bırakılmışsa eski değer korunsun
+                        new_env[key] = val
+        
         _write_env(new_env)
+        save_user_prefs(new_prefs)
         status_label.configure(text="✅ Kaydedildi! Bazı değişiklikler yeniden başlatma gerektirir.")
         win.after(3000, lambda: status_label.configure(text=""))
 

@@ -28,7 +28,6 @@ from core.fs import (
     akilli_yol_cozucu, derin_arama, kodu_calistir
 )
  
-KAPANIŞ_KELİMELERİ = ["uyku modu", "teşekkürler ghost", "kapan", "çıkış yap", "görüşürüz"]
 
 SESLI_MOD_GECIS = ["sesli moda geç", "orb moduna geç", "arayüzü küçült", "küçük ekrana geç", "kompakt mod"]
 YAZILI_MOD_GECIS = ["yazılı moda geç", "terminali aç", "arayüzü genişlet", "geniş ekrana geç", "sohbet moduna geç"]
@@ -167,12 +166,6 @@ class CommandHandler:
         if not user_input:
             return
         
-        if any(k in user_input.lower() for k in KAPANIŞ_KELİMELERİ):
-            self.app.record_message("user", user_input)
-            self.app.record_message("ghost", "Anlaşıldı Patron, nöbetçi moduna geçiyorum.")
-            self.app.after(2000, self.app.destroy)
-            return
-
         lower_input = user_input.lower()
         gecis_yapildi = False
         
@@ -234,6 +227,12 @@ class CommandHandler:
                 try:
                     response, model = self.controller(zengin_input)
                     self._update_model_label(model)
+                    if "[[GHOST_SHUTDOWN]]" in response:
+                        self.app.after(0, lambda: self.app.record_message("ghost", "Anlaşıldı Patron, nöbetçi moduna geçiyorum."))
+                        if self.app.voice_mode: self._asistan_konus("Görüşürüz patron.")
+                        self.app.after(2000, self.app.destroy)
+                        return
+                        
                     display = self._clean_response_for_display(response)
                     
                     if display and display.strip():
@@ -281,6 +280,12 @@ class CommandHandler:
             
             final_mesaji = cevap.strip() if cevap else ""
             
+            if "[[GHOST_SHUTDOWN]]" in final_mesaji:
+                self.app.after(0, lambda: self.app.record_message("ghost", "Anlaşıldı Patron, nöbetçi moduna geçiyorum."))
+                if self.app.voice_mode: self._asistan_konus("Görüşürüz patron.")
+                self.app.after(2000, self.app.destroy)
+                return
+                
             if final_mesaji:
                 if getattr(self.app, "_expanded", False):
                     # Streaming animasyonu: kelime kelime yaz
