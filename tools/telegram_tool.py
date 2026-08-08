@@ -4,10 +4,10 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# ── Yetkili kullanıcı ID'leri ─────────────────────────────────────────────────
+# ── Yetkili kullanıcı IP/ID'leri ───────────────────────────────────────────────
 # Buraya eklenmeyen hiçbir Telegram user_id mesaj gönderemez.
 # Birden fazla ID eklemek için apı_key.env'de virgülle ayır: "111,222,333"
-_env_ids = os.getenv("TELEGRAM_ALLOWED_IDS", "1357186275")
+_env_ids = os.getenv("TELEGRAM_ALLOWED_IP", "1357186275")
 ALLOWED_USER_IDS: set = {
     int(uid.strip()) for uid in _env_ids.split(",") if uid.strip().isdigit()
 }

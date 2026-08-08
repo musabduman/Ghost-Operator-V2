@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException, Header
 from pydantic import BaseModel
 import threading
 import sys
@@ -6,8 +6,14 @@ import os
 
 from handler.command_handler import CommandHandler
 from sessions.session_manager import save_session
+from core.config import GHOST_TOKEN
 
 app = FastAPI(title="Ghost Core Server")
+
+async def verify_token(x_ghost_token: str = Header(None)):
+    if not x_ghost_token or x_ghost_token != GHOST_TOKEN:
+        raise HTTPException(status_code=403, detail="Geçersiz veya eksik Ghost Token (Güvenlik İhlali)")
+    return x_ghost_token
 
 class HeadlessApp:
     def __init__(self):
@@ -35,7 +41,7 @@ headless_ghost = HeadlessApp()
 class ChatRequest(BaseModel):
     message: str
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(verify_token)])
 def chat(req: ChatRequest):
     if headless_ghost.is_busy:
         return {"status": "busy", "response": "Şu an başka bir işlem yapıyorum."}
@@ -50,8 +56,10 @@ def chat(req: ChatRequest):
     finally:
         headless_ghost.is_busy = False
 
-@app.get("/history")
+@app.get("/history", dependencies=[Depends(verify_token)])
 def get_history():
     return {"messages": headless_ghost.messages}
 
-# uvicorn core_server:app --host 0.0.0.0 --port 8001
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

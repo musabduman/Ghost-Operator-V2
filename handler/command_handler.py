@@ -71,9 +71,9 @@ class CommandHandler:
 
     def _proxy_controller(self, user_input: str):
         import requests
-        from core.config import CORE_API_URL
+        from core.config import CORE_API_URL, GHOST_TOKEN
         try:
-            res = requests.post(CORE_API_URL, json={"message": user_input}, timeout=600)
+            res = requests.post(CORE_API_URL, json={"message": user_input}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=600)
             if res.status_code == 200:
                 data = res.json()
                 if data.get("status") == "busy":
@@ -660,11 +660,10 @@ class CommandHandler:
 
     def _tool_whatsapp_gonder(self, kisi: str, mesaj: str) -> str:
         self.app.log(f"SİSTEM: WhatsApp'tan '{kisi}' kişisine mesaj gönderiliyor...", "green")
-        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
         if USE_LOCAL_BRIDGE:
-            import requests
             try:
-                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_mesaj_gonder", "parametreler": {"kisi": kisi, "mesaj": mesaj}}, timeout=30)
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_mesaj_gonder", "parametreler": {"kisi": kisi, "mesaj": mesaj}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=30)
                 if res.status_code == 200:
                     data = res.json()
                     return data.get("mesaj", "WhatsApp mesajı gönderildi (Local Bridge).")
@@ -676,11 +675,10 @@ class CommandHandler:
 
     def _tool_whatsapp_oku(self) -> str:
         self.app.log("SİSTEM: WhatsApp ekranı Vision ile okunuyor...", "green")
-        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
         if USE_LOCAL_BRIDGE:
-            import requests
             try:
-                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_ekrani_yorumla", "parametreler": {}}, timeout=60)
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_ekrani_yorumla", "parametreler": {}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
                 if res.status_code == 200:
                     data = res.json()
                     return data.get("mesaj", "WhatsApp ekranı okundu (Local Bridge).")
@@ -752,11 +750,10 @@ class CommandHandler:
     
     def _tool_take_screenshot(self, ne_arayacagim: str) -> str:
         self.app.log(f"SİSTEM: Ghost otonom olarak ekrana bakıyor... Soru: '{ne_arayacagim}'", "green")
-        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+        from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
         if USE_LOCAL_BRIDGE:
-            import requests
             try:
-                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "ekran_goruntusu_al", "parametreler": {"mesaj": ne_arayacagim}}, timeout=60)
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "ekran_goruntusu_al", "parametreler": {"mesaj": ne_arayacagim}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
                 if res.status_code == 200:
                     data = res.json()
                     return data.get("mesaj", "Ekran yorumlandı (Local Bridge).")
@@ -1001,7 +998,7 @@ class CommandHandler:
                 with open(yol, "r", encoding="utf-8") as f:
                     eski_icerik = f.read()
                 if eski_icerik.strip() != icerik.strip():  # gerçekten değişiklik var mı?
-                    from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL
+                    from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
                     if USE_LOCAL_BRIDGE:
                         import requests
                         try:
@@ -1013,6 +1010,7 @@ class CommandHandler:
                                     "yeni_icerik": icerik,
                                     "aciklama": aciklama
                                 },
+                                headers={"X-Ghost-Token": GHOST_TOKEN},
                                 timeout=130
                             )
                             if res.status_code == 200:

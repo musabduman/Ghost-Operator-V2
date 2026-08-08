@@ -31,21 +31,31 @@ import json
 USER_PREFS_FILE = os.path.join(GHOST_DATA_DIR, "user_prefs.json")
 
 def load_user_prefs() -> dict:
+    import uuid
     defaults = {
         "theme_bg": "#1e1e24",
         "theme_fg": "#ffffff",
         "language": "Türkçe",
-        "custom_rules": ""
+        "custom_rules": "",
+        "ghost_token": uuid.uuid4().hex  # Güvenlik için varsayılan token
     }
     if not os.path.exists(USER_PREFS_FILE):
+        save_user_prefs(defaults)
         return defaults
     try:
         with open(USER_PREFS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # Eksik anahtarları default ile doldur
+            
+            # Eksik anahtarları (özellikle token'ı) default ile doldur
+            changed = False
             for k, v in defaults.items():
                 if k not in data:
                     data[k] = v
+                    changed = True
+            
+            if changed:
+                save_user_prefs(data)
+                
             return data
     except Exception:
         return defaults
@@ -53,3 +63,6 @@ def load_user_prefs() -> dict:
 def save_user_prefs(prefs: dict):
     with open(USER_PREFS_FILE, "w", encoding="utf-8") as f:
         json.dump(prefs, f, ensure_ascii=False, indent=4)
+
+_prefs_cache = load_user_prefs()
+GHOST_TOKEN = _prefs_cache.get("ghost_token")

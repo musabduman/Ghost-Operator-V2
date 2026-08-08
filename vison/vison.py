@@ -1,3 +1,4 @@
+from core.config import GHOST_TOKEN
 import base64
 import re
 import requests
@@ -32,7 +33,7 @@ def minimax_vision_analiz(soru, resim_yolu):
             "keep_alive": 0
         }
 
-        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        response = requests.post(OLLAMA_URL, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=120)
         # 1. HTTP seviyesindeki hataları yakala
         if response.status_code != 200:
             return False, None, f"API Bağlantı Hatası (HTTP {response.status_code}): {response.text}"

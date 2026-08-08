@@ -14,7 +14,7 @@ class ProjeKodBellek:
     """
 
     def __init__(self, collection_name="proje_kod"):
-        from core.config import DB_DIR
+        from core.config import DB_DIR, GHOST_TOKEN
         db_path = os.path.join(DB_DIR, "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name=collection_name)
@@ -22,7 +22,7 @@ class ProjeKodBellek:
 
     def _get_embedding(self, metin):
         payload = {"model": "qwen3-embedding:0.6b", "prompt": metin}
-        response = requests.post(self.api_url, json=payload, timeout=120)
+        response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=120)
         response.raise_for_status()
         return response.json()["embedding"]
 

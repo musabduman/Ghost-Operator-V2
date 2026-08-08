@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 import sys
 import os
@@ -14,8 +14,14 @@ from tools.browser_tool import browser_google_search
 from core.fs import kodu_calistir, dosya_bul
 import PIL.ImageGrab
 import base64
+from core.config import GHOST_TOKEN
 
 app = FastAPI(title="Ghost Local Bridge API", description="Docker'daki Ghost Core ile Host makine arasındaki masaüstü köprüsü")
+
+async def verify_token(x_ghost_token: str = Header(None)):
+    if not x_ghost_token or x_ghost_token != GHOST_TOKEN:
+        raise HTTPException(status_code=403, detail="Geçersiz veya eksik Ghost Token (Güvenlik İhlali)")
+    return x_ghost_token
 
 class ToolRequest(BaseModel):
     tool_adi: str
@@ -39,7 +45,7 @@ def check_permission(tool_name: str) -> bool:
     except:
         return True
 
-@app.post("/execute")
+@app.post("/execute", dependencies=[Depends(verify_token)])
 def execute_tool(req: ToolRequest):
     tool = req.tool_adi
     params = req.parametreler
@@ -100,7 +106,7 @@ def execute_tool(req: ToolRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/show_diff")
+@app.post("/show_diff", dependencies=[Depends(verify_token)])
 def show_diff(req: DiffRequest):
     import subprocess
     import tempfile

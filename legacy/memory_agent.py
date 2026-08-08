@@ -1,3 +1,4 @@
+from core.config import GHOST_TOKEN
 import threading
 import requests
 from hafıza.rag_hafıza import Bellek
@@ -73,7 +74,7 @@ class MemoryAgent:
             "options": {"temperature": 0.1, "num_ctx": 1024},
         }
         try:
-            response = requests.post(self.api_url, json=payload, timeout=90)
+            response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=90)
             response.raise_for_status()
             data = response.json()
 

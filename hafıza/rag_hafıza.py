@@ -5,7 +5,7 @@ import hashlib
 
 class Bellek:
     def __init__(self, collection_name="bellek"):
-        from core.config import DB_DIR
+        from core.config import DB_DIR, GHOST_TOKEN
         db_path = os.path.join(DB_DIR, "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection_name = collection_name
@@ -20,7 +20,7 @@ class Bellek:
             "prompt": metin
         }
         # Ana model meşgulken hata vermemesi için 120 saniye sabır!
-        response = requests.post(self.api_url, json=payload, timeout=120)
+        response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=120)
         response.raise_for_status()
         return response.json()["embedding"]
 
