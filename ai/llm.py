@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apı_key.env")
 load_dotenv(env_path)
 
+from core.config import GHOST_TOKEN
+
 # 1. ORTAK BİLİNÇ (State)
 class GhostState(TypedDict):
     messages: Annotated[list, operator.add]

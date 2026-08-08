@@ -10,3 +10,6 @@ sessions/sessions
 eski_kodlar
 ghost_mesgul.lock
 
+api_key.env
+*.mp3
+Ghost_Data/

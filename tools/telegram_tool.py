@@ -51,9 +51,17 @@ class TelegramBridge:
         self.ui_callback(text, user, chat_id)
 
     def _thread_target(self):
+        import time
         self.app = ApplicationBuilder().token(self.token).build()
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
-        self.app.run_polling()  # senkron, kendi event loop'unu içeride açıp kapatıyor
+        
+        while True:
+            try:
+                self.app.run_polling()  # senkron, kendi event loop'unu içeride açıp kapatıyor
+                break # Eğer düzgünce kapanırsa döngüden çık
+            except Exception as e:
+                print(f"[TELEGRAM UYARISI] Telegram sunucularına bağlanılamadı (Ağ hatası: {str(e)}). 5 saniye sonra tekrar denenecek...")
+                time.sleep(5)
 
     def start_in_background(self):
         if self._thread and self._thread.is_alive():

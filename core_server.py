@@ -3,6 +3,8 @@ from pydantic import BaseModel
 import threading
 import sys
 import os
+import core.config
+core.config.USE_DOCKER_CORE = False  # SUNUCU KENDİ KENDİNE PROXY YAPMAMALIDIR!
 
 from handler.command_handler import CommandHandler
 from sessions.session_manager import save_session

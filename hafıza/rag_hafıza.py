@@ -1,3 +1,4 @@
+from core.config import GHOST_TOKEN
 import chromadb
 import requests
 import os
