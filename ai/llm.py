@@ -8,8 +8,8 @@ from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
 
-# apı_key.env dosyasını oku
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apı_key.env")
+# .env dosyasını oku
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(env_path)
 
 from core.config import GHOST_TOKEN
@@ -161,7 +161,7 @@ class ChatLLM(BaseLLM):
 # 2. İŞÇİ BEYİN (artık NVIDIA Build/NIM üzerinden çalışıyor — Ollama'daki
 # qwen3-coder:480b-cloud kaldırıldığı için OpenAI-uyumlu NIM endpoint'ine geçildi)
 class QwenWorker:
-    def __init__(self, model="deepseek-ai/deepseek-v3.2", api_key=None):
+    def __init__(self, model="deepseek-ai/deepseek-v4-flash-0731", api_key=None):
         self.model = model
         self.api_url = "https://integrate.api.nvidia.com/v1/chat/completions"
         self.api_key = api_key or os.getenv("NVIDIA_API_KEY")
@@ -234,7 +234,7 @@ class GhostController:
         # tool_runner artık ham metin değil, (isim: str, args: dict) alan bir
         # fonksiyon olmalı. command_handler.py tarafında _execute_tool_call.
         self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
-        self.worker = QwenWorker(model="deepseek-ai/deepseek-v3.2")
+        self.worker = QwenWorker(model="deepseek-ai/deepseek-v4-flash-0731")
         self.tool_runner = tool_runner
         self._lock = threading.Lock()
 

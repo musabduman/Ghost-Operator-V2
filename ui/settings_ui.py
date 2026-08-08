@@ -1,6 +1,6 @@
 """
 ui/settings_ui.py — Ghost Ayarlar Paneli.
-apı_key.env dosyasından değerleri okur, değiştirir ve kaydeder.
+.env dosyasından değerleri okur, değiştirir ve kaydeder.
 """
 import os
 import customtkinter as ctk
@@ -8,11 +8,11 @@ from core.config import load_user_prefs, save_user_prefs
 
 ENV_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "apı_key.env"
+    ".env"
 )
 
 def _read_env() -> dict:
-    """apı_key.env dosyasını key=value sözlüğü olarak döndürür."""
+    """.env dosyasını key=value sözlüğü olarak döndürür."""
     values = {}
     if not os.path.exists(ENV_PATH):
         return values
@@ -27,7 +27,7 @@ def _read_env() -> dict:
     return values
 
 def _write_env(values: dict):
-    """Sözlüğü apı_key.env formatında yazar (yorumları korur)."""
+    """.env formatında yazar (yorumları korur)."""
     lines = []
     if os.path.exists(ENV_PATH):
         with open(ENV_PATH, "r", encoding="utf-8") as f:
@@ -184,9 +184,40 @@ def open_settings_window(app):
     api_tab.grid_columnconfigure(0, weight=1)
     api_tab.grid_columnconfigure(1, weight=0)
 
-    _make_field(api_tab, "NVIDIA API Key", "NVIDIA_API_KEY", is_secret=True, row=0)
-    _make_field(api_tab, "Google API Key", "GOOGLE_API_KEY", is_secret=True, row=2)
-    _make_field(api_tab, "Google Search Engine ID", "SEARCH_ENGINE_ID", row=4)
+    # — Zorunlu Anahtarlar —
+    ctk.CTkLabel(
+        api_tab,
+        text="🔴  ZORUNLU — Ghost bu anahtarsız kod yazamaz",
+        font=("Consolas", 10, "bold"), text_color="#cc4444", anchor="w"
+    ).grid(row=0, column=0, columnspan=2, padx=16, pady=(14, 2), sticky="w")
+
+    ctk.CTkLabel(
+        api_tab,
+        text="NVIDIA API Key  ·  build.nvidia.com adresinden ücretsiz alınır  ·  Kod yazma işçisi (DeepSeek) bu key ile çalışır",
+        font=("Consolas", 9), text_color="#555555", anchor="w", wraplength=560
+    ).grid(row=1, column=0, columnspan=2, padx=16, pady=(0, 2), sticky="w")
+    _make_field(api_tab, "NVIDIA API Key", "NVIDIA_API_KEY", is_secret=True, row=2)
+
+    # — İsteğe Bağlı Anahtarlar —
+    ctk.CTkLabel(
+        api_tab,
+        text="🟡  İSTEĞE BAĞLI — Bu anahtarlar olmadan Ghost çalışır ama ilgili özellik devre dışı kalır",
+        font=("Consolas", 10, "bold"), text_color="#aaaa33", anchor="w"
+    ).grid(row=5, column=0, columnspan=2, padx=16, pady=(20, 2), sticky="w")
+
+    ctk.CTkLabel(
+        api_tab,
+        text="Spotify Client ID  ·  developer.spotify.com adresinden alınır  ·  Müzik kontrol özelliği için gereklidir",
+        font=("Consolas", 9), text_color="#555555", anchor="w", wraplength=560
+    ).grid(row=6, column=0, columnspan=2, padx=16, pady=(0, 2), sticky="w")
+    _make_field(api_tab, "Spotify Client ID", "CLIENT_ID", is_secret=True, row=7)
+
+    ctk.CTkLabel(
+        api_tab,
+        text="Spotify Client Secret  ·  developer.spotify.com adresinden alınır  ·  Müzik kontrol özelliği için gereklidir",
+        font=("Consolas", 9), text_color="#555555", anchor="w", wraplength=560
+    ).grid(row=9, column=0, columnspan=2, padx=16, pady=(0, 2), sticky="w")
+    _make_field(api_tab, "Spotify Client Secret", "CLIENT_SECRET", is_secret=True, row=10)
 
     # ── Ses sekmesi ────────────────────────────────────────────────────────────
     ses_tab = tabs.tab("🔊 Ses")
@@ -224,15 +255,19 @@ def open_settings_window(app):
     tg_tab.grid_columnconfigure(0, weight=1)
     tg_tab.grid_columnconfigure(1, weight=0)
 
-    _make_field(tg_tab, "Telegram Bot Token", "TELEGRAM_BOT_TOKEN", is_secret=True, row=0)
+    ctk.CTkLabel(
+        tg_tab,
+        text="Telegram Bot Token  ·  t.me/BotFather üzerinden yeni bot oluşturarak alınır",
+        font=("Consolas", 9), text_color="#555555", anchor="w", wraplength=560
+    ).grid(row=0, column=0, columnspan=2, padx=16, pady=(14, 2), sticky="w")
+    _make_field(tg_tab, "Telegram Bot Token", "TELEGRAM_BOT_TOKEN", is_secret=True, row=1)
 
     ctk.CTkLabel(
         tg_tab,
-        text="İzin Verilen IP (sadece bu IP'den gelen mesajlar işlenir, boşsa herkese açık)",
-        font=("Consolas", 10), text_color="#555555", anchor="w", wraplength=560
-    ).grid(row=2, column=0, columnspan=2, padx=16, pady=(16, 0), sticky="w")
-
-    _make_field(tg_tab, "İzin Verilen Kullanıcı IP'si", "TELEGRAM_ALLOWED_IP", row=3)
+        text="İzin Verilen Kullanıcı ID'si  ·  Telegram'da @userinfobot'a /start yaz, ID'ni öğren  ·  Sadece bu ID'den gelen mesajlar işlenir",
+        font=("Consolas", 9), text_color="#555555", anchor="w", wraplength=560
+    ).grid(row=3, column=0, columnspan=2, padx=16, pady=(16, 2), sticky="w")
+    _make_field(tg_tab, "İzin Verilen Kullanıcı ID'si", "TELEGRAM_ALLOWED_IP", row=4)
 
     # ── Kaydet / Kapat ─────────────────────────────────────────────────────────
     btn_bar = ctk.CTkFrame(win, fg_color="#111111", height=52, corner_radius=0)
