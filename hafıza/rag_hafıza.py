@@ -20,7 +20,7 @@ class Bellek:
             "prompt": metin
         }
         # Ana model meşgulken hata vermemesi için 120 saniye sabır!
-        response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=120)
+        response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=120)
         response.raise_for_status()
         return response.json()["embedding"]
 

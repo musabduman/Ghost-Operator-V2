@@ -124,7 +124,7 @@ class LibrarianAgent:
         }
         
         try:
-            response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=90)
+            response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=90)
             response.raise_for_status()
             raw_content = response.json()["message"]["content"].strip()
             

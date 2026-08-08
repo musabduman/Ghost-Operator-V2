@@ -22,7 +22,7 @@ class ProjeKodBellek:
 
     def _get_embedding(self, metin):
         payload = {"model": "qwen3-embedding:0.6b", "prompt": metin}
-        response = requests.post(self.api_url, json=payload, headers={X-Ghost-Token: GHOST_TOKEN}, timeout=120)
+        response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=120)
         response.raise_for_status()
         return response.json()["embedding"]
 
