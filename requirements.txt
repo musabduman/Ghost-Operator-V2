@@ -9,7 +9,6 @@ langchain-anthropic
 openai
 requests
 python-dotenv
-sqlite3
 chromadb
 pytest
 # UI ve masaüstü köprüsü bağımlılıkları (Masaüstü için)
@@ -17,3 +16,4 @@ customtkinter
 pygame
 Pillow
 playwright
+spotipy
