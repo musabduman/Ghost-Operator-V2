@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import platform
 import operator
 import requests
@@ -7,6 +8,11 @@ import threading
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
+
+# ── Forge Guardrail Adaptörü (format drift & rescue) ─────────────────────────
+from ai.guardrail_adapter import build_validator, validate_and_rescue
+
+logger = logging.getLogger("ghost.llm")
 
 # .env dosyasını oku
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -238,6 +244,12 @@ class GhostController:
         self.tool_runner = tool_runner
         self._lock = threading.Lock()
 
+        # ── Forge Guardrail: format drift & rescue ────────────────────────────
+        # TOOLS listesi tool_registry singleton'ından geliyor (single source of
+        # truth). Validator stateless — thread-safe, lock gerekmez.
+        self._forge_validator = build_validator(TOOLS)
+        logger.debug("[Forge] GhostController: validator başlatıldı.")
+
         # Proje hafızası: worker'a "bu projede zaten ne var" bağlamını
         # vermek için — genel Bellek (rag_hafıza.py) ile karışmasın diye
         # ayrı bir Chroma koleksiyonu kullanıyor.
@@ -273,7 +285,22 @@ class GhostController:
         workflow = StateGraph(GhostState)
 
         def supervisor_node(state: GhostState):
-            msg = self.supervisor._raw_call(state["messages"], tools=TOOLS)
+            raw_msg = self.supervisor._raw_call(state["messages"], tools=TOOLS)
+
+            # ── Forge Guardrail filtre noktası ───────────────────────────────
+            # Modelin cevabı format drift veya hallüsinasyonlu araç ismi
+            # içeriyorsa validate_and_rescue kendi içinde en fazla 3 kez
+            # modele nudge göndererek düzeltmeye çalışır. Başarısızsa orijinal
+            # mesaj döner — Ghost kendi fallback mekanizmasıyla devam eder.
+            msg = validate_and_rescue(
+                msg=raw_msg,
+                validator=self._forge_validator,
+                raw_call_fn=self.supervisor._raw_call,
+                messages_so_far=state["messages"],
+                tools=TOOLS,
+            )
+            # ─────────────────────────────────────────────────────────────────
+
             tool_calls = msg.get("tool_calls") or []
 
             dosya, talimat = "", ""

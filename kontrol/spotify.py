@@ -18,22 +18,31 @@ SCOPE = "user-modify-playback-state user-read-playback-state user-read-currently
 
 class SpotifyManager:
     def __init__(self):
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-            redirect_uri=REDIRECT_URI,
-            scope=SCOPE,
-            open_browser=True # Giriş için tarayıcıyı otomatik açar
-        ))
+        if not CLIENT_ID or not CLIENT_SECRET:
+            self.sp = None
+        else:
+            self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+                client_id=CLIENT_ID,
+                client_secret=CLIENT_SECRET,
+                redirect_uri=REDIRECT_URI,
+                scope=SCOPE,
+                open_browser=True # Giriş için tarayıcıyı otomatik açar
+            ))
 
     def current_track(self):
         """Şu an çalan şarkı bilgisini döndürür."""
+        if not self.sp:
+            return "Spotify ayarlanmamış (Ayarlardan API anahtarlarını girin)."
+        
         track = self.sp.current_user_playing_track()
         if track and track['is_playing']:
             return f"{track['item']['artists'][0]['name']} - {track['item']['name']}"
         return "Şu an müzik çalmıyor."
         
     def play_specific_song(self, song_name):
+        if not self.sp:
+            return "Spotify çalışmıyor: API anahtarları eksik."
+        
         try:
             devices = self.sp.devices()
             if not devices['devices']:
@@ -67,6 +76,9 @@ class SpotifyManager:
         
         
     def wake_active_device(self):
+        if not self.sp:
+            return None
+            
         devices = self.sp.devices()
         if not devices['devices']:
             return None
@@ -76,6 +88,9 @@ class SpotifyManager:
 
     def play_playlist(self, playlist_name):
         """Kullanıcının kendi kütüphanesindeki bir çalma listesini bulup açar."""
+        if not self.sp:
+            return "Spotify çalışmıyor: API anahtarları eksik."
+            
         try:
             # 1. Cihaz kontrolü (Önceki hatayı yaşamamak için)
             devices = self.sp.devices()
@@ -113,18 +128,22 @@ class SpotifyManager:
             return f"Çalma listesi açılamadı. Detay: {e}"
            
     def next_track(self):
+        if not self.sp: return "Spotify API anahtarları eksik."
         self.sp.next_track()
         return "Bir sonraki şarkıya geçildi."
 
     def previous_track(self):
+        if not self.sp: return "Spotify API anahtarları eksik."
         self.sp.previous_track()
         return "Önceki şarkıya dönüldü."
 
     def pause_playback(self):
+        if not self.sp: return "Spotify API anahtarları eksik."
         self.sp.pause_playback()
         return "Müzik durduruldu."
 
     def start_playback(self):
+        if not self.sp: return "Spotify API anahtarları eksik."
         self.sp.start_playback()
         return "Müzik devam ettiriliyor."
 

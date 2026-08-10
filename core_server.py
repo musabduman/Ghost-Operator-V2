@@ -22,6 +22,7 @@ class HeadlessApp:
         self.voice_mode = False
         self._expanded = True
         self.messages = []
+        self.current_session_id = "headless_core_session"
         self.command_handler = CommandHandler(self)
         self.is_busy = False
 
