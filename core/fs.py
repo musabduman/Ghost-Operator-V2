@@ -61,38 +61,52 @@ def dosya_bul(dosya_yolu: str, aktif_proje_dizini: str = None) -> str:
     LLM'in verdiği kısa dosya adını sistemde arar ve tam yolunu döndürür.
     Böylece LLM'in uzun/sabit (C:\\Users\\...) yollar tahmin etmesine gerek kalmaz.
     """
+    # Mutlak yol verilmişse ve varsa direkt döndür
     if os.path.isabs(dosya_yolu) and os.path.exists(dosya_yolu):
         return dosya_yolu
-        
+
+    # Mutlak yol verilmiş ama henüz yoksa (yeni yazılacak dosya) — arama yapma, direkt döndür
+    if os.path.isabs(dosya_yolu):
+        return dosya_yolu
+
     hedef_adi = os.path.basename(dosya_yolu)
-    
+
+    # Tarama sırasında kesinlikle atlanacak klasörler (SDK, araç, önbellek vb.)
+    ATLANACAK_DIZINLER = {
+        ".git", "node_modules", "venv", ".venv", "__pycache__",
+        "dart-sdk", "flutter", "flutter-sdk", "android-sdk", "Android",
+        "sdk", "jdk", "jre", "dotnet", "mingw", "msys",
+        "dartdoc", "templates",  # dart dökümantasyon şablonları
+    }
+
     # 1. Önce aktif proje dizininde derinlemesine ara
     if aktif_proje_dizini and os.path.exists(aktif_proje_dizini):
         for root, dirs, files in os.walk(aktif_proje_dizini):
-            # Gereksiz klasörleri atla (hız için)
-            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__")]
+            dirs[:] = [d for d in dirs if d not in ATLANACAK_DIZINLER]
             if hedef_adi in files:
-                return os.path.join(root, dosya_yolu if dosya_yolu in files else hedef_adi)
-                
-    # 2. Bulunamadıysa genel çalışma alanlarında ara
+                return os.path.join(root, hedef_adi)
+
+    # 2. Bulunamadıysa → aktif proje dizinine yaz (YENİ dosya)
+    if aktif_proje_dizini and os.path.exists(aktif_proje_dizini):
+        # Alt klasör verildiyse (örn: src/js/main.js) onu da aktif projeye ekle
+        return os.path.join(aktif_proje_dizini, dosya_yolu)
+
+    # 3. Aktif proje yoksa Desktop/Documents'ta ara — ama SDK klasörlerini atla
     home = os.path.expanduser("~")
     roots = [
         os.path.join(home, "Desktop"),
-        os.path.join(home, "Documents")
+        os.path.join(home, "Documents"),
     ]
-    
+
     for r in roots:
         if not os.path.exists(r):
             continue
         for root, dirs, files in os.walk(r):
-            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__")]
+            dirs[:] = [d for d in dirs if d not in ATLANACAK_DIZINLER]
             if hedef_adi in files:
                 return os.path.join(root, hedef_adi)
-                
-    # 3. Hiçbir yerde yoksa, muhtemelen YENİ yazılacak bir dosyadır.
-    if aktif_proje_dizini:
-        return os.path.join(aktif_proje_dizini, dosya_yolu)
-        
+
+    # 4. Hiçbir yerde yoksa ham yolu döndür (çağıran taraf klasörü oluşturacak)
     return dosya_yolu
 
 

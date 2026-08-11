@@ -10,6 +10,7 @@ import time
 import json
 import queue
 import inspect
+import requests
 import spotipy
 import traceback
 import threading
@@ -67,22 +68,9 @@ class CommandHandler:
             self.controller.on_task_end = self.gorevi_sonlandir
         self.spotify = SpotifyManager()
         self.islem_kuyrugu = queue.Queue()
-        self.su_an_mesgul = False  
-
-    def _proxy_controller(self, user_input: str):
-        import requests
-        from core.config import CORE_API_URL, GHOST_TOKEN
-        try:
-            res = requests.post(CORE_API_URL, json={"message": user_input}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=600)
-            if res.status_code == 200:
-                data = res.json()
-                if data.get("status") == "busy":
-                    return "Şu an meşgulüm.", "PROXY"
-                return data.get("response", ""), "PROXY"
-            else:
-                return f"[Hata] Core Sunucu Hatası: {res.status_code}", "PROXY"
-        except Exception as e:
-            return f"[Hata] Core Sunucuya bağlanılamadı: {e}", "PROXY"
+        self.su_an_mesgul = False
+        self.aktif_plan = None
+        self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
 
         # Single Source of Truth: Tüm çalıştırma fonksiyonlarını tool_registry'ye bağla
         tool_registry.bind_handler("arama", self._tool_search)
@@ -110,9 +98,22 @@ class CommandHandler:
         tool_registry.bind_handler("uzun_gorev_plani_yap", self._tool_uzun_gorev_plani_yap)
         tool_registry.bind_handler("terminal_cikti_oku", self._tool_terminal_cikti_oku)
         tool_registry.bind_handler("periyodik_gorev_olustur", self._tool_periyodik_gorev_olustur)
-        
-        self.aktif_plan = None
-        self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
+        tool_registry.bind_handler("periyodik_gorevleri_listele", self._tool_periyodik_gorevleri_listele)
+        tool_registry.bind_handler("periyodik_gorev_sil", self._tool_periyodik_gorev_sil)
+
+    def _proxy_controller(self, user_input: str):
+        from core.config import CORE_API_URL, GHOST_TOKEN
+        try:
+            res = requests.post(CORE_API_URL, json={"message": user_input}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=600)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("status") == "busy":
+                    return "Şu an meşgulüm.", "PROXY"
+                return data.get("response", ""), "PROXY"
+            else:
+                return f"[Hata] Core Sunucu Hatası: {res.status_code}", "PROXY"
+        except Exception as e:
+            return f"[Hata] Core Sunucuya bağlanılamadı: {e}", "PROXY"
 
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
@@ -236,7 +237,7 @@ class CommandHandler:
                     display = self._clean_response_for_display(response)
                     
                     if display and display.strip():
-                        self.app.after(0, lambda: self.app.record_message("ghost", display))
+                        self.app.after(0, lambda msg=display: self.app.record_message("ghost", msg))
                         if self.app.voice_mode:
                             self._asistan_konus(display)
                                 
@@ -287,11 +288,14 @@ class CommandHandler:
                 return
                 
             if final_mesaji:
-                if getattr(self.app, "_expanded", False):
-                    # Streaming animasyonu: kelime kelime yaz
-                    self.app.after(0, lambda: self._stream_to_bubble(final_mesaji))
+                if getattr(self.app, "_expanded", True):
+                    # Streaming animasyonu: kelime kelime yaz — hata olursa normal yaz
+                    try:
+                        self.app.after(0, lambda msg=final_mesaji: self._stream_to_bubble(msg))
+                    except Exception:
+                        self.app.after(0, lambda msg=final_mesaji: self.app.record_message("ghost", msg))
                 else:
-                    self.app.after(0, lambda: self.app.record_message("ghost", final_mesaji))
+                    self.app.after(0, lambda msg=final_mesaji: self.app.record_message("ghost", msg))
                 if self.app.voice_mode:
                     self._asistan_konus(final_mesaji)
                     
@@ -428,6 +432,7 @@ class CommandHandler:
         seviyede, her turun kesin olarak bittiği tek yerde sıfırlanıyor.
         """
         self.aktif_plan = None
+        self._sorulmus_dizinler = set()  # Oturum başında sıfırla
 
     def _proje_durumu_guncelle(self, isim: str, args: dict) -> str:
         """
@@ -581,11 +586,32 @@ class CommandHandler:
         is_web = any(k in hedef_lower for k in ["web", "site", "html", "node", "npm", "react", "uygulama"])
         is_node = any(k in hedef_lower for k in ["node", "npm", "express", "server.js", "package.json"])
 
-        # Proje klasörünü ilk adımda bul (klasor_yap / klasor_ac söz geçiyor mu?)
-        proje_klasor_adimi_var = any(
-            any(k in str(a).lower() for k in ["klasor_yap", "klasör", "mkdir", "oluştur"])
+        # Planlarda mutlak yol kullanılıp kullanılmadığını kontrol et
+        gorecel_yol_uyarisi = ""
+        gorecel_adimlar = [
+            a for a in adimlar
+            if any(k in str(a).lower() for k in ["dosya_yaz", "dosya oluştur", "yazılıyor"])
+            and not any(c in str(a) for c in ["C:\\", "C:/", "/home/", "~"])
+        ]
+        if gorecel_adimlar:
+            gorecel_yol_uyarisi = (
+                "\n\n[SİSTEM UYARISI: Planda göreceli yol içeren adımlar tespit edildi. "
+                "dosya_yaz çağırırken `yol` parametresine MUTLAKA tam mutlak yol ver. "
+                "Proje klasörünü klasor_yap ile oluşturup o yolu tum adımlarda kullan.]"
+            )
+
+        # klasor_yap adımı eksikse otomatik başa enjekte et
+        klasor_adimi_var = any(
+            any(k in str(a).lower() for k in ["klasor_yap", "klasör", "mkdir", "dizin oluştur"])
             for a in adimlar
         )
+        if not klasor_adimi_var:
+            kok_dizin_adimi = (
+                f"klasor_yap ile '{hedef.split()[0]}' proje ana klasörünü tam mutlak yoluyla oluştur "
+                f"(Desktop veya uygun bir konuma, örn: C:\\Users\\dum4n\\Desktop\\{hedef.split()[0]})"
+            )
+            adimlar = [kok_dizin_adimi] + list(adimlar)
+            self.app.log("SİSTEM: Plan'a otomatik 'klasor_yap' adımı enjekte edildi.", "yellow")
 
         # npm install adımı eksikse ve Node projesi ise sona ekle
         npm_adimi_var = any("npm install" in str(a).lower() for a in adimlar)
@@ -614,10 +640,12 @@ class CommandHandler:
 
         return (
             f"Plan başarıyla kaydedildi. HEDEF: {hedef}\n"
-            f"ADIMLAR:\n{plan_str}{ekstra_not}\n\n"
-            f"[PROJE PROTOKOLÜ HATIRLATMASI]: Her dosyayı sırayla yaz. "
+            f"ADIMLAR:\n{plan_str}{ekstra_not}{gorecel_yol_uyarisi}\n\n"
+            f"[PROJE PROTOKOLÜ HATIRLATMASI]: "
+            f"Her dosyayı sırayla yaz. Dosya_yaz'a MUTLAKA tam mutlak yol ver. "
+            f"Her yazma sonrasında dönen GERCEK_YOL'u kontrol et. "
             f"Bir dosya bitmeden diğerine geçme. "
-            f"Tüm dosyalar yazılıp bağımlılıklar kurulunca projeyi çalıştır, ardından gorev_bitti çağır."
+            f"Tüm dosyalar yazılınca projeyi çalıştır, ardından gorev_bitti çağır."
         )
 
     def _tool_browser_type(self, url: str, kutu: str, metin: str) -> str:
@@ -1050,8 +1078,13 @@ class CommandHandler:
             os.makedirs(folder, exist_ok=True)
         with open(yol, "w", encoding="utf-8") as f:
             f.write(icerik)
-        self.app.log(f"SİSTEM: Dosya yazıldı → {yol}", "green")
-        return f"Kod başarıyla '{yol}' konumuna kaydedildi."
+        gercek_yol = os.path.abspath(yol)
+        self.app.log(f"SİSTEM: Dosya yazıldı → {gercek_yol}", "green")
+        return (
+            f"Dosya başarıyla yazıldı.\n"
+            f"GERCEK_YOL: {gercek_yol}\n"
+            f"[KONTROL: Bu yol beklediğin proje diziniyle eşleşiyor mu? Farklıysa dosyayı doğru yere tekrar yaz.]"
+        )
 
     def _tool_run_code(self, yol: str) -> str:
         from core.fs import dosya_bul
