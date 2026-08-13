@@ -21,7 +21,7 @@ import importlib.util
 from hafıza.rag_hafıza import Bellek
 from hafıza.episodic_db import EpisodicDB
 from kontrol.spotify import SpotifyManager
-from ui.compact_ui import set_voice_state
+
 from vison.vison import minimax_vision_analiz
 from tools.browser_tool import get_dom_elements
 from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
@@ -118,22 +118,17 @@ class CommandHandler:
     # ---> YENİ EKLENEN MERKEZİ KONUŞMA VE DİNLEME YÖNETİCİSİ <---
     def _asistan_konus(self, metin: str):
         self.app.is_speaking = True
-
-        if not getattr(self.app, "_expanded", True):
-            from ui.compact_ui import set_voice_state
-            self.app.after(0, lambda: set_voice_state(self.app, "speaking", "Konuşuyorum..."))
+        try:
+            self.app.log("Ses asistanı uyandırılıyor...", "green")
+        except: pass
 
         def konusma_bitti_callback():
             self.app.is_speaking = False
-            if getattr(self.app, "voice_mode", False) and not getattr(self.app, "_expanded", True):
-                from ui.compact_ui import set_voice_state
-                self.app.after(0, lambda: set_voice_state(self.app, "listening", "Dinliyorum..."))
-                self.app.after(300, self.app.voice_handler.start_listening)
 
         try:
             self.app.konus.speak(metin, on_complete=konusma_bitti_callback)
         except Exception as e:
-            self.app.log(f"Ses motoru hatası: {e}", "red")
+            self.app.log(f"Ses asistanı uyandırılamadı: {e}", "red")
             self.app.is_speaking = False
 
     # ── Dışarıdan çağrılan giriş noktaları ───────────────────────────────────
@@ -201,7 +196,10 @@ class CommandHandler:
         self.app.set_model_label("Aktif Durum: Yönlendiriliyor...")
         
         if not getattr(self.app, "_expanded", True):
-            set_voice_state(self.app, "thinking", "Düşünüyorum...")
+            try:
+                from ui.compact_ui import set_voice_state
+                set_voice_state(self.app, "thinking", "Düşünüyorum...")
+            except: pass
 
         threading.Thread(
             target=self._orchestrate_task,
@@ -311,44 +309,13 @@ class CommandHandler:
         Metni kelime/karakter grupları halinde animasyonla Ghost balonuna yazar.
         Ana thread'de _messages + SQLite'a da kaydeder.
         """
-        from ui.expanded_ui import create_streaming_bubble
+        self.app.record_message("ghost", text)
+        self.app.log("SİSTEM: Yanıt streaming (WebSocket üzerinden) tamamlandı.", "green")
 
         # Geçmişe hemen ekle (thread-safe)
         self.app._messages.append({"role": "ghost", "text": text, "ts": int(time.time())})
         if hasattr(self, "episodic_db"):
             self.episodic_db.mesaj_kaydet(self.app.current_session_id, "ghost", text)
-
-        _, bubble_label = create_streaming_bubble(self.app)
-        if bubble_label is None:
-            # Expanded mod yoksa normal yaz
-            self.app.record_message("ghost", text)
-            return
-
-        # Chunk'lara böl (chunk_size karakter grupları)
-        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-        accumulated = [""]
-
-        def _type_next(idx: int):
-            if idx >= len(chunks):
-                # Bitti — imleç kaldır
-                try:
-                    if bubble_label.winfo_exists():
-                        bubble_label.configure(text=text)
-                        app_after = self.app.after(
-                            50, lambda: self.app.chat_scroll._parent_canvas.yview_moveto(1.0)
-                        )
-                except Exception:
-                    pass
-                return
-            accumulated[0] += chunks[idx]
-            try:
-                if bubble_label.winfo_exists():
-                    bubble_label.configure(text=accumulated[0] + "▋")
-                    self.app.after(interval_ms, lambda: _type_next(idx + 1))
-            except Exception:
-                pass
-
-        self.app.after(0, lambda: _type_next(0))
 
     def _execute_tool_call(self, isim: str, args: dict) -> str:
         """llm.py'nin tools_node'u tarafından çağrılır. tool_registry üzerinden
@@ -793,14 +760,12 @@ class CommandHandler:
             kayit_yolu = os.path.join(TEMP_DIR, "ghost_auto_screenshot.png")
             
             try:
-                self.app.iconify()
+                # Minimizing logic removed
                 time.sleep(0.5) 
                 
                 import PIL.ImageGrab
                 ekran = PIL.ImageGrab.grab(all_screens=True)
                 ekran.save(kayit_yolu)
-                
-                self.app.deiconify()
                 
                 self.app.set_model_label("Aktif Durum: Görüntü İşleniyor (Vision)", "#a352cc")
     
@@ -813,7 +778,6 @@ class CommandHandler:
                 return f"GÖZLEM SONUCU: {mesaj}\n\n[ÖLÜMCÜL SİSTEM TALİMATI: Ekranı başarıyla gördün ve özetledin. ŞİMDİ ARAÇ KULLANMAYI DERHAL BIRAK. Hiçbir [ETİKET] kullanmadan, doğrudan gördüklerini Patron'a kendi havalı tarzınla açıkla ve görevi bitir.]"
                 
             except Exception as e:
-                self.app.deiconify()
                 return f"SİSTEM HATASI: Ekran görüntüsü alınamadı, hata: {str(e)}"
         
     def _tool_search(self, sorgu: str) -> str:
@@ -1054,22 +1018,21 @@ class CommandHandler:
                         except Exception as e:
                             self.app.log(f"[UYARI] Local Bridge Diff'e bağlanılamadı: {e}", "yellow")
                     else:
-                        import threading as _th
-                        from ui.diff_dialog import show_diff_dialog
-                        event = _th.Event()
-                        result_holder = {"approved": False, "reason": ""}
-                        show_diff_dialog(self.app, yol, eski_icerik, icerik, aciklama, event, result_holder)
-    
-                        timed_out = not event.wait(timeout=120)
-                        if timed_out:
-                            # Süre doldu → otomatik onayla
-                            pass
-                        elif not result_holder["approved"]:
-                            reason = result_holder.get("reason", "").strip()
-                            msg = "Kullanıcı bu değişikliği onaylamadı."
-                            if reason:
-                                msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
-                            return msg
+                        if hasattr(self.app, "request_diff_approval"):
+                            import threading as _th
+                            event = _th.Event()
+                            result_holder = {"approved": False, "reason": ""}
+                            self.app.request_diff_approval(yol, eski_icerik, icerik, aciklama, event, result_holder)
+        
+                            timed_out = not event.wait(timeout=120)
+                            if timed_out:
+                                pass
+                            elif not result_holder["approved"]:
+                                reason = result_holder.get("reason", "").strip()
+                                msg = "Kullanıcı bu değişikliği onaylamadı."
+                                if reason:
+                                    msg += f" Sebep: {reason}. Lütfen bu geribildirime göre farklı bir yaklaşım dene."
+                                return msg
             except Exception as e:
                 self.app.log(f"[UYARI] Diff hesaplanamadı: {e}", "yellow")
 
@@ -1121,14 +1084,7 @@ class CommandHandler:
 
     def _tool_terminal_cikti_oku(self, satir_sayisi: str = "50") -> str:
         """Kullanıcının terminal panelindeki çıktıları okur."""
-        try:
-            from ui.terminal_panel import get_terminal_output
-            n = int(satir_sayisi) if str(satir_sayisi).isdigit() else 50
-            out = get_terminal_output(last_n=n)
-            self.app.log(f"SİSTEM: Terminal okundu (Son {n} satır)", "green")
-            return f"Terminal Çıktısı (Son {n} satır):\n{out}"
-        except Exception as e:
-            return f"Terminal okunurken hata oluştu: {e}"
+        return "Terminal çıktısı desteklenmiyor (Arayüz yenilendi)."
 
     def _tool_periyodik_gorev_olustur(self, gorev_tanimi: str, periyot_saat: float) -> str:
         try:
