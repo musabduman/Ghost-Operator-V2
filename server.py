@@ -100,19 +100,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if payload.get("type") == "chat":
                 msg = payload.get("text", "")
                 if msg:
-                    ghost_app.record_message("user", msg)
-                    
-                    def run_chat():
-                        ghost_app.is_busy = True
-                        try:
-                            cevap, _ = ghost_app.command_handler.controller(msg)
-                            ghost_app.record_message("ghost", cevap)
-                        except Exception as e:
-                            ghost_app.log(f"Hata: {str(e)}", "red")
-                        finally:
-                            ghost_app.is_busy = False
-                    
-                    threading.Thread(target=run_chat, daemon=True).start()
+                    ghost_app.command_handler.handle(voice_text=msg)
                     
             elif payload.get("type") == "diff_response":
                 action_id = payload.get("action_id")
@@ -124,6 +112,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     result_holder["approved"] = approved
                     result_holder["reason"] = reason
                     event.set()
+                    
+            elif payload.get("type") == "toggle_voice":
+                ghost_app.voice_mode = not ghost_app.voice_mode
+                if ghost_app.voice_mode:
+                    ghost_app.log("SİSTEM: Ses Modu Aktif.", "green")
+                    try:
+                        ghost_app.command_handler.voice_handler.start_listening()
+                        manager.broadcast_sync({"type": "voice_state", "state": "listening"})
+                    except Exception as e:
+                        ghost_app.log(f"Mikrofon başlatılamadı: {e}", "red")
+                else:
+                    ghost_app.log("SİSTEM: Ses Modu Kapatıldı.", "yellow")
+                    try:
+                        ghost_app.command_handler.voice_handler.is_listening = False
+                        manager.broadcast_sync({"type": "voice_state", "state": "idle"})
+                    except: pass
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -140,6 +144,79 @@ def get_session(session_id: str):
     if hasattr(ghost_app.command_handler.controller, "supervisor"):
         ghost_app.command_handler.controller.supervisor.load_history(ghost_app.messages)
     return data
+
+# --- SETTINGS API ---
+ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+def _read_env() -> dict:
+    values = {}
+    if not os.path.exists(ENV_PATH): return values
+    with open(ENV_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"): continue
+            if "=" in line:
+                k, _, v = line.partition("=")
+                values[k.strip()] = v.strip().strip('"').strip("'")
+    return values
+
+def _write_env(values: dict):
+    lines = []
+    if os.path.exists(ENV_PATH):
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+    updated_keys = set()
+    for i, line in enumerate(lines):
+        striped = line.strip()
+        if not striped or striped.startswith("#"): continue
+        if "=" in striped:
+            k, _, _ = striped.partition("=")
+            k = k.strip()
+            if k in values:
+                lines[i] = f'{k} = "{values[k]}"\n'
+                updated_keys.add(k)
+                
+    for k, v in values.items():
+        if k not in updated_keys:
+            lines.append(f'{k} = "{v}"\n')
+            
+    with open(ENV_PATH, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+from pydantic import BaseModel
+from typing import Dict, Any
+
+class SettingsPayload(BaseModel):
+    env: Dict[str, str]
+    prefs: Dict[str, Any]
+
+@app.get("/api/settings")
+def get_settings():
+    from core.config import load_user_prefs
+    return {
+        "env": _read_env(),
+        "prefs": load_user_prefs()
+    }
+
+@app.post("/api/settings")
+def save_settings(payload: SettingsPayload):
+    from core.config import save_user_prefs
+    _write_env(payload.env)
+    save_user_prefs(payload.prefs)
+    return {"status": "success"}
+
+# --- MEMORY API ---
+@app.get("/api/memory")
+def get_memory():
+    try:
+        from hafıza.episodic_db import EpisodicDB
+        db = EpisodicDB()
+        goals = db.aktif_hedefleri_getir()
+        recent = db.son_olaylari_getir(20)
+        return {"status": "success", "goals": goals, "recent_events": recent}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

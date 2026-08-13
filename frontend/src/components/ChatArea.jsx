@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bell, Settings, Eye } from 'lucide-react';
+import { Send, Bell, Settings, Eye, Terminal, Brain } from 'lucide-react';
 
-export default function ChatArea({ messages, onSendMessage, toggleCodePanel }) {
+export default function ChatArea({ messages, onSendMessage, toggleCodePanel, setActiveBottomTab, voiceState, toggleVoiceMode }) {
   const [input, setInput] = useState("");
   const scrollRef = useRef(null);
 
@@ -18,6 +18,13 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel }) {
     }
   };
 
+  const getVoiceColor = () => {
+    if (voiceState === 'listening') return '#00ffcc';
+    if (voiceState === 'thinking') return '#ffcc00';
+    if (voiceState === 'speaking') return '#ff4444';
+    return '#888';
+  };
+
   return (
     <div className="main-content">
       {/* Top Bar */}
@@ -26,9 +33,31 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel }) {
           Aktif Zeka: <span style={{ fontStyle: 'italic' }}>GPT-OSS 120B (Yönetici)</span>
         </div>
         <div style={{ display: 'flex', gap: '16px' }}>
-          <button style={{ backgroundColor: 'transparent', color: '#888' }}><Bell size={18} /></button>
-          <button style={{ backgroundColor: 'transparent', color: '#888' }}><Settings size={18} /></button>
-          <button style={{ backgroundColor: 'transparent', color: '#888' }} onClick={toggleCodePanel}><Eye size={18} /></button>
+          <button 
+            onClick={toggleVoiceMode}
+            style={{ backgroundColor: 'transparent', color: getVoiceColor(), display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Sesli Asistan Modu"
+          >
+            <span style={{ 
+              width: '8px', height: '8px', borderRadius: '50%', 
+              backgroundColor: getVoiceColor(), 
+              boxShadow: voiceState !== 'idle' ? `0 0 8px ${getVoiceColor()}` : 'none' 
+            }} />
+            Ses
+          </button>
+          
+          <button onClick={() => setActiveBottomTab('terminal')} style={{ backgroundColor: 'transparent', color: '#888' }} title="Terminal (Loglar)">
+            <Terminal size={18} />
+          </button>
+          <button onClick={() => setActiveBottomTab('memory')} style={{ backgroundColor: 'transparent', color: '#888' }} title="Hafıza">
+            <Brain size={18} />
+          </button>
+          <button onClick={() => setActiveBottomTab('settings')} style={{ backgroundColor: 'transparent', color: '#888' }} title="Ayarlar">
+            <Settings size={18} />
+          </button>
+          <button style={{ backgroundColor: 'transparent', color: '#888' }} onClick={toggleCodePanel} title="Kod Görüntüleyici">
+            <Eye size={18} />
+          </button>
         </div>
       </div>
 

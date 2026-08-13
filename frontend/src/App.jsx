@@ -2,29 +2,29 @@ import { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import CodePanel from './components/CodePanel'
+import BottomPanel from './components/BottomPanel'
 
 function App() {
   const [currentSession, setCurrentSession] = useState("headless_core_session");
   const [isCodePanelVisible, setIsCodePanelVisible] = useState(false);
+  const [activeBottomTab, setActiveBottomTab] = useState(null); // 'terminal', 'memory', 'settings'
+  const [voiceState, setVoiceState] = useState('idle');
   
   const [sessions, setSessions] = useState([]);
   const [messages, setMessages] = useState([]);
   const [fileData, setFileData] = useState(null);
+  const [logs, setLogs] = useState([]);
   
   const ws = useRef(null);
 
   useEffect(() => {
-    // Fetch initial sessions
     fetch('http://127.0.0.1:8000/api/sessions')
       .then(r => r.json())
       .then(data => setSessions(data))
       .catch(e => console.error("Session load error:", e));
 
-    // Connect WebSocket
     connectWs();
-    return () => {
-      if(ws.current) ws.current.close();
-    }
+    return () => { if(ws.current) ws.current.close(); }
   }, []);
 
   const connectWs = () => {
@@ -44,6 +44,10 @@ function App() {
           modifiedContent: payload.modifiedContent
         });
         setIsCodePanelVisible(true);
+      } else if (payload.type === 'log') {
+        setLogs(prev => [...prev, { text: payload.text, tag: payload.tag, ts: Date.now() }]);
+      } else if (payload.type === 'voice_state') {
+        setVoiceState(payload.state);
       }
     };
     ws.current.onclose = () => {
@@ -72,6 +76,12 @@ function App() {
       setIsCodePanelVisible(false);
     }
   };
+  
+  const toggleVoiceMode = () => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'toggle_voice' }));
+    }
+  };
 
   return (
     <div className="app-container">
@@ -85,6 +95,9 @@ function App() {
         messages={messages} 
         onSendMessage={handleSendMessage} 
         toggleCodePanel={() => setIsCodePanelVisible(!isCodePanelVisible)}
+        setActiveBottomTab={setActiveBottomTab}
+        voiceState={voiceState}
+        toggleVoiceMode={toggleVoiceMode}
       />
 
       <CodePanel 
@@ -93,6 +106,12 @@ function App() {
         fileData={fileData}
         onApprove={handleApprove}
         onReject={handleReject}
+      />
+      
+      <BottomPanel 
+        activeTab={activeBottomTab} 
+        setActiveTab={setActiveBottomTab} 
+        logs={logs} 
       />
     </div>
   )
