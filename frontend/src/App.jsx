@@ -14,6 +14,8 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [fileData, setFileData] = useState(null);
   const [logs, setLogs] = useState([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState("");
   
   const ws = useRef(null);
 
@@ -24,15 +26,39 @@ function App() {
       .catch(e => console.error("Session load error:", e));
 
     connectWs();
-    return () => { if(ws.current) ws.current.close(); }
+    return () => { 
+      if(ws.current) {
+        ws.current.onclose = null;
+        ws.current.onmessage = null;
+        ws.current.close();
+        ws.current = null;
+      }
+    }
   }, []);
 
   const connectWs = () => {
-    ws.current = new WebSocket('ws://127.0.0.1:8000/ws');
-    ws.current.onmessage = (event) => {
+    if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    
+    const socket = new WebSocket('ws://127.0.0.1:8000/ws');
+    ws.current = socket;
+    
+    socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
       if (payload.type === 'message') {
         setMessages(prev => [...prev, { role: payload.role, content: payload.text }]);
+        setIsThinking(false);
+        setStreamingMessage("");
+      } else if (payload.type === 'chat_thinking') {
+        setIsThinking(true);
+        setStreamingMessage("");
+      } else if (payload.type === 'chat_stream_start') {
+        setIsThinking(false);
+        setStreamingMessage("");
+      } else if (payload.type === 'chat_stream') {
+        setIsThinking(false);
+        setStreamingMessage(prev => prev + payload.chunk);
       } else if (payload.type === 'diff_request') {
         setMessages(prev => [...prev, { role: 'ai', content: payload.description || 'Patron, şu dosyada değişiklik yapıyorum. Lütfen incele:', hasDiff: true }]);
         setFileData({
@@ -50,8 +76,11 @@ function App() {
         setVoiceState(payload.state);
       }
     };
-    ws.current.onclose = () => {
-      setTimeout(connectWs, 3000);
+    
+    socket.onclose = () => {
+      if (ws.current === socket) {
+        setTimeout(connectWs, 3000);
+      }
     }
   }
 
@@ -98,6 +127,8 @@ function App() {
         setActiveBottomTab={setActiveBottomTab}
         voiceState={voiceState}
         toggleVoiceMode={toggleVoiceMode}
+        isThinking={isThinking}
+        streamingMessage={streamingMessage}
       />
 
       <CodePanel 

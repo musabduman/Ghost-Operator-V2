@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bell, Settings, Eye, Terminal, Brain } from 'lucide-react';
 
-export default function ChatArea({ messages, onSendMessage, toggleCodePanel, setActiveBottomTab, voiceState, toggleVoiceMode }) {
+export default function ChatArea({ messages, onSendMessage, toggleCodePanel, setActiveBottomTab, voiceState, toggleVoiceMode, isThinking, streamingMessage }) {
   const [input, setInput] = useState("");
   const scrollRef = useRef(null);
 
@@ -9,7 +9,7 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel, set
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isThinking, streamingMessage]);
 
   const handleSend = () => {
     if (input.trim()) {
@@ -19,10 +19,13 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel, set
   };
 
   const getVoiceColor = () => {
-    if (voiceState === 'listening') return '#00ffcc';
-    if (voiceState === 'thinking') return '#ffcc00';
-    if (voiceState === 'speaking') return '#ff4444';
-    return '#888';
+    switch (voiceState) {
+      case 'listening': return '#10b981';
+      case 'speaking': return '#3b82f6';
+      case 'thinking': return '#f59e0b';
+      case 'idle':
+      default: return '#888';
+    }
   };
 
   return (
@@ -85,6 +88,19 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel, set
             )}
           </div>
         ))}
+
+        {isThinking && !streamingMessage && (
+          <div className="chat-bubble ai thinking" style={{ fontStyle: 'italic', opacity: 0.7 }}>
+            Ghost Düşünüyor... 🤔
+          </div>
+        )}
+        
+        {streamingMessage && (
+          <div className="chat-bubble ai streaming">
+            {streamingMessage}
+            <span style={{ animation: 'blink 1s step-end infinite' }}>|</span>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}

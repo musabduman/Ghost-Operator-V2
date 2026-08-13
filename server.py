@@ -52,12 +52,17 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+from handler.voice_handler import VoiceHandler
+from ai.konus import GhostSpeech
+
 class WebGhostApp:
     def __init__(self):
         self.voice_mode = False
         self._expanded = True
         self.messages = []
         self.current_session_id = new_session_id()
+        self.voice_handler = VoiceHandler(self)
+        self.konus = GhostSpeech(self)
         self.command_handler = CommandHandler(self)
         self.is_busy = False
         self.pending_diffs = {}  # { action_id: (event, result_holder) }
@@ -68,12 +73,24 @@ class WebGhostApp:
     def record_message(self, role, text):
         self.messages.append({"role": role, "text": text})
         manager.broadcast_sync({"type": "message", "role": role, "text": text})
+        
+    def broadcast_stream_start(self):
+        manager.broadcast_sync({"type": "chat_stream_start"})
+
+    def broadcast_stream(self, chunk):
+        manager.broadcast_sync({"type": "chat_stream", "chunk": chunk})
+        
+    def broadcast_thinking(self):
+        manager.broadcast_sync({"type": "chat_thinking"})
 
     def set_model_label(self, text, color=""):
         manager.broadcast_sync({"type": "status", "text": text})
 
     def after(self, delay, func):
         threading.Timer(delay/1000.0, func).start()
+
+    def update(self):
+        pass
 
     def request_diff_approval(self, yol, eski_icerik, icerik, aciklama, event, result_holder):
         action_id = str(uuid.uuid4())
@@ -118,14 +135,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 if ghost_app.voice_mode:
                     ghost_app.log("SİSTEM: Ses Modu Aktif.", "green")
                     try:
-                        ghost_app.command_handler.voice_handler.start_listening()
+                        ghost_app.voice_handler.start_listening()
                         manager.broadcast_sync({"type": "voice_state", "state": "listening"})
                     except Exception as e:
                         ghost_app.log(f"Mikrofon başlatılamadı: {e}", "red")
                 else:
                     ghost_app.log("SİSTEM: Ses Modu Kapatıldı.", "yellow")
                     try:
-                        ghost_app.command_handler.voice_handler.is_listening = False
+                        ghost_app.voice_handler.is_listening = False
                         manager.broadcast_sync({"type": "voice_state", "state": "idle"})
                     except: pass
 

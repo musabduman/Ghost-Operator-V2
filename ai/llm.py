@@ -158,22 +158,50 @@ class ChatLLM(BaseLLM):
             
         self.mesaj_gecmisi[0]["content"] += context_str
 
-    def _raw_call(self, messages=None, tools=None) -> dict:
+    def _raw_call(self, messages=None, tools=None, stream_callback=None, stream_start_callback=None) -> dict:
         """Artık ham metin değil, Ollama'nın döndürdüğü TAM message objesini
         döndürür (content + tool_calls + varsa thinking). Regex ile bu objenin
         içinden niyet çıkarmaya gerek yok, tool_calls zaten yapılandırılmış."""
+        is_stream = stream_callback is not None
         payload = {
             "model": self.model,
             "messages": messages if messages is not None else self.mesaj_gecmisi,
-            "stream": False,
+            "stream": is_stream,
             "options": {"temperature": 0.7, "num_ctx": 4096}
         }
         if tools:
             payload["tools"] = tools
 
-        response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=90)
+        if is_stream and stream_start_callback:
+            stream_start_callback()
+
+        response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=90, stream=is_stream)
         response.raise_for_status()
-        return response.json()["message"]
+        
+        if not is_stream:
+            return response.json()["message"]
+            
+        import json
+        full_message = {"role": "assistant", "content": ""}
+        tool_calls = None
+        
+        for line in response.iter_lines():
+            if line:
+                chunk = json.loads(line)
+                msg_chunk = chunk.get("message", {})
+                
+                content_delta = msg_chunk.get("content", "")
+                if content_delta:
+                    full_message["content"] += content_delta
+                    stream_callback(content_delta)
+                    
+                if "tool_calls" in msg_chunk:
+                    tool_calls = msg_chunk["tool_calls"]
+                    
+        if tool_calls:
+            full_message["tool_calls"] = tool_calls
+            
+        return full_message
 
 
 # 2. İŞÇİ BEYİN (artık NVIDIA Build/NIM üzerinden çalışıyor — Ollama'daki
@@ -248,14 +276,25 @@ class QwenWorker:
 
 # 3. ORKESTRA ŞEFİ
 class GhostController:
-    def __init__(self, tool_runner=None):
-        # tool_runner artık ham metin değil, (isim: str, args: dict) alan bir
-        # fonksiyon olmalı. command_handler.py tarafında _execute_tool_call.
+    def __init__(
+        self,
+        episodic_db=None,
+        on_task_end: callable = None,
+        tool_runner: callable = None,
+        stream_callback: callable = None,
+        stream_start_callback: callable = None
+    ):
+        self.episodic_db = episodic_db if episodic_db else EpisodicDB()
+        self.proje_bellek = RAGBellek(koleksiyon_adi="projeler")
+        self.on_task_end = on_task_end
+        self.tool_runner = tool_runner
+        self.stream_callback = stream_callback
+        self.stream_start_callback = stream_start_callback
+        self._lock = threading.Lock()
+        
         self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
         self.worker = QwenWorker(model="deepseek-ai/deepseek-v4-flash-0731")
-        self.tool_runner = tool_runner
-        self._lock = threading.Lock()
-
+        
         # ── Forge Guardrail: format drift & rescue ────────────────────────────
         # TOOLS listesi tool_registry singleton'ından geliyor (single source of
         # truth). Validator stateless — thread-safe, lock gerekmez.
@@ -315,7 +354,12 @@ class GhostController:
         workflow = StateGraph(GhostState)
 
         def supervisor_node(state: GhostState):
-            raw_msg = self.supervisor._raw_call(state["messages"], tools=TOOLS)
+            raw_msg = self.supervisor._raw_call(
+                state["messages"], 
+                tools=TOOLS, 
+                stream_callback=self.stream_callback,
+                stream_start_callback=self.stream_start_callback
+            )
 
             # ── Forge Guardrail filtre noktası ───────────────────────────────
             # Modelin cevabı format drift veya hallüsinasyonlu araç ismi
@@ -650,11 +694,6 @@ class GhostController:
                 # Model hiç tool çağırmadan düz cevap verdiyse (sohbet durumu)
                 nihai_cevap = m["content"]
 
-        # Kalıcı geçmişe bu turun TÜM mesajlarını (tool çağrıları + sonuçları
-        # dahil) yapılandırılmış haliyle ekliyoruz.
-        if gecici_mesajlar is None:
-            self.supervisor.mesaj_gecmisi.extend(yeni_mesajlar)
-
         # Eğer limit aşımı olduysa ve nihai bir cevap üretemediysek,
         # LLM'e sadece nerede takıldığını ve sorunun ne olduğunu açıklatıyoruz.
         if not nihai_cevap:
@@ -670,11 +709,13 @@ class GhostController:
             try:
                 response_msg = self.supervisor._raw_call(kurtarma_mesajlari, tools=None)
                 nihai_cevap = response_msg.get("content", "İşlem limit aşımına uğradı ve nerede takıldığımı açıklayamadım.")
-                # Kurtarma yanıtını da geçmişe ekliyoruz
-                if gecici_mesajlar is None:
-                    self.supervisor.mesaj_gecmisi.append(response_msg)
             except Exception as e:
                 nihai_cevap = f"[Sistem Hatası] Limit aşımı sonrasında açıklama üretilemedi: {e}"
+
+        # Kalıcı geçmişin şişmemesi ve modelin kafasının karışmaması için
+        # sadece özetlenmiş nihai cevabı kalıcı geçmişe ekliyoruz. (Eski sistemdeki gibi TÜM tool_call'ları eklemiyoruz)
+        if gecici_mesajlar is None and nihai_cevap:
+            self.supervisor.mesaj_gecmisi.append({"role": "assistant", "content": nihai_cevap})
 
         model_name = "Qwen 480B (Mühendis Kodladı)" if kod_yazildi_mi else "GPT-OSS 120B (Yönetici)"
 

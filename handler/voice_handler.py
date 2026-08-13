@@ -8,7 +8,6 @@ import json
 import numpy as np
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
-from ui.compact_ui import set_voice_level
 
 MODEL_YOLU = "model"  
 
@@ -86,9 +85,7 @@ class VoiceHandler:
                     if not getattr(self.app, "_expanded", True):
                         audio_np = np.frombuffer(data, dtype=np.int16)
                         if len(audio_np) > 0:
-                            rms = np.sqrt(np.mean(np.square(audio_np.astype(np.float32))))
-                            rms_normalized = min(1.0, (rms / 32768.0) * 5.0)
-                            self.app.after(0, lambda v=rms_normalized: set_voice_level(self.app, v))
+                            pass
 
                     if rec.AcceptWaveform(data):
                         result = json.loads(rec.Result())
@@ -106,7 +103,7 @@ class VoiceHandler:
                             self.app.after(0, update_partial)
 
             if not getattr(self.app, "_expanded", True):
-                set_voice_level(self.app, 0.0)
+                pass
 
             if text:
                 self.app.log(f"Sen (Sesli): {text}")

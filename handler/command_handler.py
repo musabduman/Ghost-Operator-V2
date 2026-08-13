@@ -61,7 +61,20 @@ class CommandHandler:
             self.controller = self._proxy_controller
         else:
             from ai.llm import GhostController
-            self.controller = GhostController(tool_runner=self._execute_tool_call)
+            
+            def _stream_cb(chunk: str):
+                if hasattr(self.app, "broadcast_stream"):
+                    self.app.broadcast_stream(chunk)
+            
+            def _stream_start_cb():
+                if hasattr(self.app, "broadcast_stream_start"):
+                    self.app.broadcast_stream_start()
+                    
+            self.controller = GhostController(
+                tool_runner=self._execute_tool_call, 
+                stream_callback=_stream_cb,
+                stream_start_callback=_stream_start_cb
+            )
             # gorev_bitti asla _execute_tool_call'dan geçmediği için aktif_plan'ı
             # sıfırlamanın tek güvenilir yeri: GhostController'ın her turu
             # (başarılı/başarısız/limit aşımı fark etmez) kesin olarak bitirdiği an.
@@ -196,10 +209,7 @@ class CommandHandler:
         self.app.set_model_label("Aktif Durum: Yönlendiriliyor...")
         
         if not getattr(self.app, "_expanded", True):
-            try:
-                from ui.compact_ui import set_voice_state
-                set_voice_state(self.app, "thinking", "Düşünüyorum...")
-            except: pass
+            pass
 
         threading.Thread(
             target=self._orchestrate_task,
@@ -223,6 +233,9 @@ class CommandHandler:
             
             if any(k in user_input.lower() for k in sohbet_kaliplari):
                 self.app.set_model_label("Aktif Durum: Sohbet Ediyor...")
+                if hasattr(self.app, 'broadcast_thinking'):
+                    self.app.broadcast_thinking()
+                    
                 try:
                     response, model = self.controller(zengin_input)
                     self._update_model_label(model)
@@ -273,6 +286,9 @@ class CommandHandler:
             self.app.after(300, self.app.voice_handler.start_listening)
  
     def _agentic_loop(self, user_input: str):
+        if hasattr(self.app, 'broadcast_thinking'):
+            self.app.broadcast_thinking()
+            
         try:
             cevap, model = self.controller(user_input)
             self._update_model_label(model)
@@ -286,14 +302,7 @@ class CommandHandler:
                 return
                 
             if final_mesaji:
-                if getattr(self.app, "_expanded", True):
-                    # Streaming animasyonu: kelime kelime yaz — hata olursa normal yaz
-                    try:
-                        self.app.after(0, lambda msg=final_mesaji: self._stream_to_bubble(msg))
-                    except Exception:
-                        self.app.after(0, lambda msg=final_mesaji: self.app.record_message("ghost", msg))
-                else:
-                    self.app.after(0, lambda msg=final_mesaji: self.app.record_message("ghost", msg))
+                self.app.record_message("ghost", final_mesaji)
                 if self.app.voice_mode:
                     self._asistan_konus(final_mesaji)
                     
