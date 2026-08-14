@@ -52,10 +52,20 @@ function App() {
         setStreamingMessage("");
       } else if (payload.type === 'chat_thinking') {
         setIsThinking(true);
-        setStreamingMessage("");
+        setStreamingMessage(prev => {
+          if (prev.trim()) {
+            setMessages(m => [...m, { role: 'ai', content: prev.trim(), isThought: true }]);
+          }
+          return "";
+        });
       } else if (payload.type === 'chat_stream_start') {
         setIsThinking(false);
-        setStreamingMessage("");
+        setStreamingMessage(prev => {
+          if (prev.trim()) {
+            setMessages(m => [...m, { role: 'ai', content: prev.trim(), isThought: true }]);
+          }
+          return "";
+        });
       } else if (payload.type === 'chat_stream') {
         setIsThinking(false);
         setStreamingMessage(prev => prev + payload.chunk);

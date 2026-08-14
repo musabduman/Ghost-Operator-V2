@@ -285,7 +285,7 @@ class GhostController:
         stream_start_callback: callable = None
     ):
         self.episodic_db = episodic_db if episodic_db else EpisodicDB()
-        self.proje_bellek = RAGBellek(koleksiyon_adi="projeler")
+        self.proje_bellek = ProjeKodBellek()
         self.on_task_end = on_task_end
         self.tool_runner = tool_runner
         self.stream_callback = stream_callback

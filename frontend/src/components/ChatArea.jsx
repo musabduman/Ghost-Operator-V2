@@ -67,7 +67,8 @@ export default function ChatArea({ messages, onSendMessage, toggleCodePanel, set
       {/* Chat Messages */}
       <div className="chat-scroll-area" ref={scrollRef}>
         {messages.map((m, i) => (
-          <div key={i} className={`chat-bubble ${m.role === 'user' ? 'user' : 'ai'}`}>
+          <div key={i} className={`chat-bubble ${m.role === 'user' ? 'user' : 'ai'} ${m.isThought ? 'thought' : ''}`} style={m.isThought ? { opacity: 0.8, fontSize: '0.9em', borderLeft: '3px solid #f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.05)' } : {}}>
+            {m.isThought && <div style={{ fontSize: '10px', color: '#f59e0b', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Ghost İç Sesi</div>}
             {m.content}
             {m.hasDiff && (
               <div style={{ marginTop: '12px' }}>

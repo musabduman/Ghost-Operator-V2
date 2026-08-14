@@ -27,28 +27,28 @@ app.add_middleware(
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self.loop = None
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.loop = asyncio.get_running_loop()
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
+        for connection in list(self.active_connections):
             try:
                 await connection.send_json(message)
             except:
-                pass
+                self.active_connections.remove(connection)
 
     def broadcast_sync(self, message: dict):
         """Thread-safe way to broadcast from synchronous threads"""
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.broadcast(message))
-        except RuntimeError:
-            asyncio.run(self.broadcast(message))
+        if self.loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self.broadcast(message), self.loop)
 
 manager = ConnectionManager()
 
@@ -109,6 +109,11 @@ ghost_app = WebGhostApp()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    
+    # Send existing messages to the new client
+    for msg in ghost_app.messages:
+        await websocket.send_json({"type": "message", "role": msg.get("role"), "text": msg.get("text")})
+        
     try:
         while True:
             data = await websocket.receive_text()
