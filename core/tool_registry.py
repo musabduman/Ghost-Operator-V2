@@ -119,6 +119,97 @@ class ToolRegistry:
         ordered_vals = [call_kwargs[a] for a in arg_names]
         return func(*ordered_vals)
 
+    def get_tool_info(self, name: str) -> Optional[Dict[str, Any]]:
+        return self._tools.get(name)
+
+    def load_dynamic_skill(self, file_path: str) -> dict:
+        """
+        Yeni üretilen bir yeteneği (skill) önce dry-run testinden geçirir, 
+        güvenliyse ana process'e yükler ve bilgilerini döndürür.
+        """
+        from core.fs import kodu_calistir
+        import importlib.util
+        import os
+
+        import shutil
+        import tempfile
+
+        # 1. DRY-RUN: subprocess içinde çalıştırarak module-level sonsuz döngüleri
+        # ve patlamaları izole ortamda yakala. (Kritik güvenlik katmanı)
+        # Dosya sistemine zarar vermemesi için gerçek dizinde değil geçici bir dizinde çalıştır.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file_path = os.path.join(temp_dir, os.path.basename(file_path))
+            shutil.copy2(file_path, temp_file_path)
+            
+            # import core.fs and run the isolated script
+            from core.fs import kodu_calistir
+            
+            # kodu_calistir needs to run with the temp_dir as cwd to ensure relative paths point to temp
+            # For simplicity, we just pass temp_file_path. If it uses relative paths like os.remove('x'), 
+            # it will happen in its CWD. Wait, kodu_calistir uses default CWD. We must change CWD or isolate.
+            # However, modifying kodu_calistir to accept cwd might be needed.
+            # As a shortcut, we can patch the environment or just run subprocess directly here for max isolation.
+            import subprocess
+            import sys
+            try:
+                result = subprocess.run(
+                    [sys.executable, temp_file_path],
+                    cwd=temp_dir, # Isolate file system modifications to temp_dir
+                    capture_output=True,
+                    text=True,
+                    timeout=15
+                )
+                basarili = result.returncode == 0
+                hata = result.stderr.strip() if not basarili else ""
+            except subprocess.TimeoutExpired:
+                basarili = False
+                hata = "ZAMAN AŞIMI: Kod 15 saniyede bitmedi."
+            except Exception as e:
+                basarili = False
+                hata = str(e)
+                
+        if not basarili:
+            return {
+                "success": False,
+                "error": f"Dry-run testi başarısız! Kod çalıştırılamadı veya zaman aşımına uğradı. Hata: {hata}"
+            }
+
+        # 2. Mevcut araçların isimlerini kaydet ki yeni ekleneni bulabilelim
+        mevcut_araclar = set(self._tools.keys())
+
+        # 3. Gerçek Yükleme (Main Process)
+        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if not spec or not spec.loader:
+            return {"success": False, "error": "Modül loader bulunamadı."}
+            
+        try:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as e:
+            return {"success": False, "error": f"Modül içeri aktarılırken hata oluştu: {str(e)}"}
+
+        # Hangi aracın eklendiğini bul
+        yeni_araclar = set(self._tools.keys()) - mevcut_araclar
+        if not yeni_araclar:
+            # Belki var olanı güncelledi, module name üzerinden bulalım
+            for name, info in self._tools.items():
+                if info["func"] is not None and info["func"].__module__ == module_name:
+                    yeni_araclar.add(name)
+
+        if not yeni_araclar:
+            return {"success": False, "error": "Dosyada @ghost_tool ile işaretlenmiş bir araç bulunamadı."}
+
+        # Sadece birini (veya ilkini) alıp bilgilerini dön
+        eklenen_arac_adi = list(yeni_araclar)[0]
+        tool_info = self._tools[eklenen_arac_adi]
+
+        return {
+            "success": True,
+            "tool_name": eklenen_arac_adi,
+            "schema": tool_info["schema"]
+        }
+
 
 # Global singleton registry nesnesi
 tool_registry = ToolRegistry()

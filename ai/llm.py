@@ -139,6 +139,17 @@ class ChatLLM(BaseLLM):
 
                 self.ana_kurallar += dinamik_araclar
 
+        # Harness state (Sürekli Hafıza / Öğrenilmiş Kurallar)
+        try:
+            from hafıza.harness_state import get_harness_state
+            harness = get_harness_state()
+            # Yalnızca prompt notlarını alıp sistem promptuna ekliyoruz
+            ogrenilmis_kurallar = harness.overview(kind="prompt")
+            if "prompt:" in ogrenilmis_kurallar and not "prompt: 0" in ogrenilmis_kurallar:
+                self.ana_kurallar += f"\n\n[ÖĞRENİLMİŞ EK KURALLAR — kalıcı, güncellenebilir]\n{ogrenilmis_kurallar}\n"
+        except Exception as e:
+            logger.error(f"Harness state yüklenemedi: {e}")
+
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
 
     def load_history(self, gecmis_mesajlar: list):
@@ -499,6 +510,38 @@ class GhostController:
                 except Exception as e:
                     print(f"[SİSTEM UYARISI] Proje hafızası indeksleme hatası: {e}")
 
+                # Eğer dosya "tools" klasörüne yazıldıysa, dinamik olarak registry'ye yükle ve Harness State'e (skill) kaydet.
+                if "tools" in dosya_yolu.replace("\\", "/").split("/"):
+                    from core.tool_registry import tool_registry
+                    from hafıza.harness_state import get_harness_state
+                    
+                    load_result = tool_registry.load_dynamic_skill(dosya_yolu)
+                    if load_result.get("success"):
+                        # Yeni/güncellenmiş araç başarıyla dry-run'dan geçti ve import edildi.
+                        tool_name = load_result["tool_name"]
+                        schema = load_result["schema"]
+                        
+                        # Guardrail Adapter üzerinden bir çeşit doğrulama (format vb.) yapılabilir
+                        # Proje kök dizinini bul (tools/ dosyasının iki üst klasörü)
+                        proje_kok = os.path.dirname(os.path.dirname(dosya_yolu))
+                        harness = get_harness_state(state_dir=proje_kok)
+                        harness.upsert(
+                            kind="skill",
+                            id=tool_name,
+                            title=schema.get("function", {}).get("name", tool_name),
+                            content=schema.get("function", {}).get("description", ""),
+                            reference={
+                                "type": "python",
+                                "import": f"tools.{os.path.splitext(os.path.basename(dosya_yolu))[0]}",
+                                "callable": tool_name
+                            },
+                            arguments=schema.get("function", {}).get("parameters", {}).get("properties", {}),
+                            path="tools"
+                        )
+                        gozlem += f"\n[HARNESS] '{tool_name}' aracı dry-run testinden başarıyla geçti, registry'ye eklendi ve kalıcı yetenek olarak kaydedildi."
+                    else:
+                        gozlem += f"\n[GÜVENLİK/HATA] Araç dry-run testini veya yüklemeyi geçemedi. Araç kaydedilmedi!\nHata: {load_result.get('error')}"
+
                 return {
                     "messages": [{
                         "role": "tool",
@@ -601,6 +644,16 @@ class GhostController:
                     hata_nedeni = "\n".join(degerlendirme.split("\n")[1:]).strip()
                     if not hata_nedeni:
                         hata_nedeni = degerlendirme # Eğer her şeyi tek satıra yazdıysa
+                        
+                    # Hata nedenini kalıcı hafızaya kaydet
+                    from hafıza.harness_state import get_harness_state
+                    harness = get_harness_state()
+                    # Prompt injection'a karşı: evidence tamamen eleştirmenin (LLM'in) kendi ürettiği bir metin.
+                    harness.record_refinement(
+                        trigger=ilk_istek[:200] + "..." if len(ilk_istek) > 200 else ilk_istek,
+                        changes=["Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."],
+                        evidence=hata_nedeni
+                    )
                         
                     # Modelin eleştiriyi bir sistem veya araç çıktısı gibi alıp düzeltebilmesi için user mesajı veriyoruz
                     return {

@@ -63,6 +63,36 @@ def chat(req: ChatRequest):
 def get_history():
     return {"messages": headless_ghost.messages}
 
+import subprocess
+
+worker_process = None
+
+@app.on_event("startup")
+def startup_event():
+    global worker_process
+    worker_script = os.path.join(os.path.dirname(__file__), "core", "skill_worker.py")
+    if os.path.exists(worker_script):
+        worker_process = subprocess.Popen([sys.executable, worker_script])
+        print(f"Skill Worker başlatıldı (PID: {worker_process.pid})")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    global worker_process
+    if worker_process:
+        worker_process.terminate()
+        worker_process.wait()
+        print("Skill Worker kapatıldı.")
+
+@app.post("/restart_worker", dependencies=[Depends(verify_token)])
+def restart_worker():
+    global worker_process
+    if worker_process:
+        worker_process.terminate()
+        worker_process.wait()
+    worker_script = os.path.join(os.path.dirname(__file__), "core", "skill_worker.py")
+    worker_process = subprocess.Popen([sys.executable, worker_script])
+    return {"status": "ok", "message": "Worker yeniden başlatıldı"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

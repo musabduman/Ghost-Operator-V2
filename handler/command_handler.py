@@ -693,24 +693,58 @@ class CommandHandler:
             return whatsapp_ekrani_yorumla()
 
     def _tool_arac_calistir(self, dosya: str, fonksiyon: str, parametreler: dict) -> str:
+        self.app.log(f"SİSTEM: {dosya}::{fonksiyon}({parametreler}) çalıştırılıyor (Worker via IPC)...", "green")
+        
+        import requests
+        from core.config import GHOST_TOKEN
+        
+        # Aktif projeyi bul
+        aktif_proje = self.app.episodic_db.son_aktif_projeyi_getir() if hasattr(self.app, 'episodic_db') else None
+        aktif_proje_dizini = aktif_proje.get("aktif_dizin") if aktif_proje else None
+        
+        # Tam dosya yolunu al
         try:
-            mod = self._tool_modulunu_al(dosya)
+            tools_dir = self._tools_dir()
+            tam_yol = os.path.join(tools_dir, dosya)
         except Exception as e:
-            return f"HATA: '{dosya}' import edilemedi: {e}"
+            return f"HATA: Dosya yolu çözülemedi: {e}"
 
-        fn = getattr(mod, fonksiyon, None)
-        if fn is None:
-            mevcut = [n for n in dir(mod) if not n.startswith("_")]
-            return f"HATA: '{fonksiyon}' bulunamadı. '{dosya}' içindeki fonksiyonlar: {mevcut}"
+        payload = {
+            "dosya": tam_yol,
+            "fonksiyon": fonksiyon,
+            "parametreler": parametreler or {},
+            "aktif_proje": aktif_proje_dizini
+        }
 
-        self.app.log(f"SİSTEM: {dosya}::{fonksiyon}({parametreler}) çalıştırılıyor...", "green")
         try:
-            return str(fn(**(parametreler or {})))
-        except TypeError as e:
-            imza = inspect.signature(fn)
-            return f"HATA: Parametre uyuşmazlığı. Doğru imza: {fonksiyon}{imza}. Hata: {e}"
+            # 60 saniyelik watchdog timeout
+            res = requests.post(
+                "http://127.0.0.1:8002/execute", 
+                json=payload, 
+                timeout=60
+            )
+            
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("basarili"):
+                    return str(data.get("sonuc", ""))
+                else:
+                    return f"HATA (Worker): {data.get('hata')}"
+            else:
+                return f"HATA: Skill Worker HTTP {res.status_code}: {res.text}"
+                
+        except requests.exceptions.Timeout:
+            # Watchdog devreye girdi: Worker sonsuz döngüde veya kilitlendi
+            self.app.log("SİSTEM: Skill Worker zaman aşımına uğradı (Watchdog tetiklendi). Yeniden başlatılıyor...", "red")
+            try:
+                # Core Server'a restart sinyali gönder
+                requests.post("http://127.0.0.1:8001/restart_worker", headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=10)
+            except Exception as e:
+                self.app.log(f"SİSTEM: Worker restart sinyali gönderilemedi: {e}", "red")
+            return f"HATA: Araç {dosya}::{fonksiyon} 60 saniyeyi aştığı için sonsuz döngü veya asılı kalma sebebiyle zorla durduruldu. Worker yeniden başlatıldı."
+            
         except Exception as e:
-            return f"HATA: Çalıştırma hatası: {e}"
+            return f"HATA: Skill Worker'a bağlanılamadı: {e}"
 
     def _tool_araclari_listele(self) -> str:
         tools_dir = self._tools_dir()

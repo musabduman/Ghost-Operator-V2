@@ -5,8 +5,10 @@ from fastapi.testclient import TestClient
 
 # Local Bridge API'sini içe aktar
 from local_bridge.main import app, check_permission, base_dir
+from core.config import GHOST_TOKEN
 
 client = TestClient(app)
+client.headers.update({"X-Ghost-Token": GHOST_TOKEN})
 
 def test_check_permission_default():
     # Mevcut bir permissions.json yoksa veya hatalıysa, varsayılan olarak True dönmeli

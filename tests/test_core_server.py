@@ -3,8 +3,10 @@ from fastapi.testclient import TestClient
 
 # Core Server API'sini içe aktar
 from core_server import app, headless_ghost
+from core.config import GHOST_TOKEN
 
 client = TestClient(app)
+client.headers.update({"X-Ghost-Token": GHOST_TOKEN})
 
 def test_core_server_history():
     # Başlangıçta mesaj geçmişi boş veya default sistem mesajı olmalı
