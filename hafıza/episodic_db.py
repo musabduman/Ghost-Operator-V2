@@ -25,7 +25,8 @@ class EpisodicDB:
                     timestamp INTEGER,
                     role TEXT,
                     content TEXT,
-                    is_analyzed INTEGER DEFAULT 0
+                    is_analyzed INTEGER DEFAULT 0,
+                    proje_adi TEXT
                 )
             """)
             
@@ -39,11 +40,19 @@ class EpisodicDB:
                     arguments TEXT,
                     result TEXT,
                     success INTEGER,
-                    is_analyzed INTEGER DEFAULT 0
+                    is_analyzed INTEGER DEFAULT 0,
+                    proje_adi TEXT
                 )
             """)
 
-            # 3. Proje Durum (Working State) Tablosu
+
+            # Add columns if missing
+            try:
+                cursor.execute("ALTER TABLE sohbet_gecmisi ADD COLUMN proje_adi TEXT")
+                cursor.execute("ALTER TABLE arac_gunlukleri ADD COLUMN proje_adi TEXT")
+            except:
+                pass
+\n            # 3. Proje Durum (Working State) Tablosu
             # Kısa-vadeli buffer (sohbet_gecmisi) ile uzun-vadeli RAG (Bellek) arasında
             # üçüncü bir katman: "şu an hangi projedeyim, en son ne yaptım" bilgisini tutar.
             cursor.execute("""
@@ -106,22 +115,26 @@ class EpisodicDB:
             conn.commit()
 
     def mesaj_kaydet(self, session_id: str, role: str, content: str):
+        son_proje = self.son_aktif_projeyi_getir()
+        proje_adi = son_proje["proje_adi"] if son_proje else None
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO sohbet_gecmisi (session_id, timestamp, role, content) VALUES (?, ?, ?, ?)",
-                (session_id, int(time.time()), role, content)
+                "INSERT INTO sohbet_gecmisi (session_id, timestamp, role, content, proje_adi) VALUES (?, ?, ?, ?, ?)",
+                (session_id, int(time.time()), role, content, proje_adi)
             )
             conn.commit()
 
     def arac_log_kaydet(self, session_id: str, tool_name: str, arguments: dict, result: str, success: bool):
         arguments_json = json.dumps(arguments, ensure_ascii=False)
         success_int = 1 if success else 0
+        son_proje = self.son_aktif_projeyi_getir()
+        proje_adi = son_proje["proje_adi"] if son_proje else None
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO arac_gunlukleri (session_id, timestamp, tool_name, arguments, result, success) VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, int(time.time()), tool_name, arguments_json, result, success_int)
+                "INSERT INTO arac_gunlukleri (session_id, timestamp, tool_name, arguments, result, success, proje_adi) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (session_id, int(time.time()), tool_name, arguments_json, result, success_int, proje_adi)
             )
             conn.commit()
 

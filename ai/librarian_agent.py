@@ -149,9 +149,11 @@ class LibrarianAgent:
                         fact = islem.get("fact")
                         if fact:
                             # Aynı bilginin mükerrer kaydedilmesini engelle
-                            benzer = self.bellek.benzerini_bul_metadata_ile(fact)
+                            benzer = self.bellek.benzerini_bul_metadata_ile(fact, proje_adi=proje_adi)
                             if benzer is None:
                                 metadata = {"created_at": time.time(), "confidence": confidence, "confirmation_count": 1}
+                                if proje_adi:
+                                    metadata["proje_adi"] = proje_adi
                                 self.bellek.bellege_yaz(fact, metadata=metadata)
                                 print(f"[KÜTÜPHANECİ]: Yeni bilgi RAG belleğine eklendi -> {fact}")
                             else:

@@ -497,7 +497,10 @@ class CommandHandler:
         if "GİZLİ SİSTEM BİLGİSİ" in user_input:
             return user_input
             
-        memories = self.bellek.sorgula(soru=user_input, limit=2)
+        son_proje = self.episodic_db.son_aktif_projeyi_getir()
+        proje_adi = son_proje["proje_adi"] if son_proje else None
+        
+        memories = self.bellek.sorgula(soru=user_input, limit=2, proje_adi=proje_adi)
         if not memories:
             return user_input
             

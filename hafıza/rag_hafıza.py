@@ -45,12 +45,14 @@ class Bellek:
         except Exception as e:
             print(f"[SİSTEM UYARISI] Belleğe yazma başarısız: {e}")
 
-    def sorgula(self, soru, limit=3):
+    def sorgula(self, soru, limit=3, proje_adi=None):
         try:
             embedding = self._get_embedding(soru)
+            where = {"proje_adi": proje_adi} if proje_adi else None
             results = self.collection.query(
                 query_embeddings=[embedding],
-                n_results=limit
+                n_results=limit,
+                where=where
             )
             if results["documents"] and results["documents"][0]:
                 return results["documents"][0] 
@@ -107,16 +109,18 @@ class Bellek:
             print(f"[SİSTEM UYARISI] Benzerlik kontrolü başarısız: {e}")
             return None
 
-    def benzerini_bul_metadata_ile(self, metin, esik=0.15):
+    def benzerini_bul_metadata_ile(self, metin, esik=0.15, proje_adi=None):
         """Benzer kaydı arar ve bulursa metadata'sını da döndürür."""
         if self.collection.count() == 0:
             return None
         try:
             embedding = self._get_embedding(metin)
+            where = {"proje_adi": proje_adi} if proje_adi else None
             results = self.collection.query(
                 query_embeddings=[embedding],
                 n_results=1,
                 include=["documents", "metadatas", "distances"],
+                where=where
             )
             if not results["documents"] or not results["documents"][0]:
                 return None
