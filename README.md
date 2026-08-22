@@ -19,6 +19,7 @@ Ghost separates raw activity from durable knowledge:
 2. **LibrarianAgent** — a background thread (runs every ~30s) that sends unanalyzed rows to an LLM, which extracts durable facts and proposes save/update actions.
 3. **Bellek (RAG vector store)** — where extracted facts land, with confidence scoring: each fact gets a confidence score (0–1) and a `confirmation_count` that increases on repeated confirmation. A proposed update that contradicts a fact is rejected if the existing fact is well-confirmed (`confirmation_count >= 3`) and the new claim has low confidence (`< 0.8`).
 4. **CommandHandler** — the tool dispatcher (file read/write, folder inspection, code execution, etc.), currently stateless between calls.
+5. **Project L2 Memory** — A structured, file-based memory (`.ghost/project_memory.json`) that travels with each project's repository. It stores static architectural rules, decisions, constraints, and known errors, which are injected directly into the system prompt when the agent works on that project.
 
 A planned addition is a **"durum hafızası"** (working/state memory) layer — tracking the active project, open files, and in-progress task when switching between projects, separate from long-term RAG memory.
 
@@ -75,6 +76,7 @@ Ghost, ham aktiviteyi kalıcı bilgiden ayırıyor:
 2. **LibrarianAgent** — yaklaşık 30 saniyede bir çalışan bir arka plan thread'i; analiz edilmemiş satırları bir LLM'e gönderip kalıcı bilgileri çıkarıyor ve save/update aksiyonları öneriyor.
 3. **Bellek (RAG vektör deposu)** — çıkarılan bilgilerin düştüğü yer; her bilgi 0-1 arası bir güven skoru (confidence) ve tekrar teyitlerde artan bir `confirmation_count` alıyor. Var olan bir bilgiyle çelişen bir güncelleme önerisi, eğer mevcut bilgi iyi teyit edilmişse (`confirmation_count >= 3`) ve yeni iddia düşük güvenliyse (`< 0.8`) reddediliyor.
 4. **CommandHandler** — dosya okuma/yazma, klasör inceleme, kod çalıştırma gibi araçları dispatch eden katman; şu an çağrılar arasında stateless.
+5. **Project L2 Memory (Proje L2 Hafızası)** — Her projenin kendi klasöründe (repository) tutulan ve kodla birlikte taşınabilen yapısal bir dosya hafızası (`.ghost/project_memory.json`). Mimari kuralları, alınan kararları, kısıtlamaları ve bilinen hataları saklar. Ajan o projede çalışırken bu kurallar doğrudan sistem promptuna (System Prompt) enjekte edilir.
 
 Planlanan bir ek, **"durum hafızası"** (working/state memory) katmanı — projeler arası geçişte aktif proje, açık dosyalar ve devam eden görevi, uzun vadeli RAG hafızasından ayrı olarak takip etmek için.
 

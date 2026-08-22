@@ -150,6 +150,21 @@ class ChatLLM(BaseLLM):
         except Exception as e:
             logger.error(f"Harness state yüklenemedi: {e}")
 
+        # Project L2 Memory
+        try:
+            from hafıza.episodic_db import EpisodicDB
+            from hafıza.project_memory import ProjectMemoryL2
+            db = EpisodicDB()
+            son_proje = db.son_aktif_projeyi_getir()
+            if son_proje and son_proje.get("aktif_dizin"):
+                l2 = ProjectMemoryL2(son_proje["aktif_dizin"])
+                l2_context = l2.get_formatted_context()
+                if l2_context:
+                    self.ana_kurallar += f"\n\n{l2_context}\n"
+        except Exception as e:
+            logger.error(f"Project L2 Memory yüklenemedi: {e}")
+
+
         self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
 
     def load_history(self, gecmis_mesajlar: list):

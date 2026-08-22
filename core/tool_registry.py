@@ -411,3 +411,20 @@ ghost_tool(
     params={"satir_sayisi": ("string", "Okunacak son satır sayısı (varsayılan: 50)")},
     required=[],
 )(None)
+ghost_tool(
+    name="proje_hafizasi_ekle",
+    description="Projenin statik hafızasına (L2) kalıcı bir kural, mimari kararı veya kısıtlama ekler. Bu bilgi her zaman ajanın bağlamında (context) tutulur.",
+    params={
+        "kategori": ("string", "Eklenecek kategori: architecture, decisions, current_goals, known_errors veya constraints"),
+        "bilgi": ("string", "Eklenecek yeni kural veya bilgi")
+    },
+)(None)
+
+ghost_tool(
+    name="proje_hafizasi_sil",
+    description="Projenin statik hafızasından (L2) geçerliliğini yitirmiş bir bilgiyi siler.",
+    params={
+        "kategori": ("string", "Silinecek kategori: architecture, decisions, current_goals, known_errors veya constraints"),
+        "bilgi": ("string", "Silinecek kuralın/bilginin tam metni")
+    },
+)(None)

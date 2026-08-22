@@ -113,6 +113,8 @@ class CommandHandler:
         tool_registry.bind_handler("periyodik_gorev_olustur", self._tool_periyodik_gorev_olustur)
         tool_registry.bind_handler("periyodik_gorevleri_listele", self._tool_periyodik_gorevleri_listele)
         tool_registry.bind_handler("periyodik_gorev_sil", self._tool_periyodik_gorev_sil)
+        tool_registry.bind_handler("proje_hafizasi_ekle", self._tool_proje_hafizasi_ekle)
+        tool_registry.bind_handler("proje_hafizasi_sil", self._tool_proje_hafizasi_sil)
 
     def _proxy_controller(self, user_input: str):
         from core.config import CORE_API_URL, GHOST_TOKEN
@@ -1161,3 +1163,27 @@ class CommandHandler:
             return f"{gid} ID numaralı görev başarıyla silindi ve iptal edildi."
         except Exception as e:
             return f"Görev silinirken hata oluştu: {str(e)}"
+
+    def _tool_proje_hafizasi_ekle(self, kategori: str, bilgi: str) -> str:
+        try:
+            from hafıza.project_memory import ProjectMemoryL2
+            son_proje = self.episodic_db.son_aktif_projeyi_getir()
+            if not son_proje or not son_proje.get("aktif_dizin"):
+                return "Şu an aktif bir proje bulunamadı. Lütfen önce bir projede çalışın."
+            l2 = ProjectMemoryL2(son_proje["aktif_dizin"])
+            l2.add_item(kategori, bilgi)
+            return f"Proje hafızasına '{kategori}' kategorisine eklendi: {bilgi}"
+        except Exception as e:
+            return f"Hafızaya eklenirken hata: {str(e)}"
+
+    def _tool_proje_hafizasi_sil(self, kategori: str, bilgi: str) -> str:
+        try:
+            from hafıza.project_memory import ProjectMemoryL2
+            son_proje = self.episodic_db.son_aktif_projeyi_getir()
+            if not son_proje or not son_proje.get("aktif_dizin"):
+                return "Şu an aktif bir proje bulunamadı."
+            l2 = ProjectMemoryL2(son_proje["aktif_dizin"])
+            l2.remove_item(kategori, bilgi)
+            return f"Proje hafızasından silindi: {bilgi}"
+        except Exception as e:
+            return f"Hafızadan silinirken hata: {str(e)}"
