@@ -52,7 +52,10 @@ class EpisodicDB:
                     aktif_dizin TEXT,
                     son_dokunulan_dosyalar TEXT,
                     son_gorev_ozeti TEXT,
-                    guncelleme_zamani INTEGER
+                    guncelleme_zamani INTEGER,
+                    pending_action TEXT,
+                    son_hata TEXT,
+                    mevcut_context TEXT
                 )
             """)
 
@@ -81,6 +84,15 @@ class EpisodicDB:
                     is_system_task INTEGER DEFAULT 0
                 )
             """)
+
+
+            # Add columns if missing
+            try:
+                cursor.execute("ALTER TABLE proje_durumu ADD COLUMN pending_action TEXT")
+                cursor.execute("ALTER TABLE proje_durumu ADD COLUMN son_hata TEXT")
+                cursor.execute("ALTER TABLE proje_durumu ADD COLUMN mevcut_context TEXT")
+            except:
+                pass
 
             # 6. Bildirimler Tablosu
             cursor.execute("""
@@ -154,7 +166,8 @@ class EpisodicDB:
     # ── Proje Durum (Working State) ──────────────────────────────────────
     def durum_guncelle(self, proje_adi: str, aktif_dizin: str = None,
                         dokunulan_dosya: str = None, gorev_ozeti: str = None,
-                        max_dosya_gecmisi: int = 15):
+                        pending_action: str = None, son_hata: str = None,
+                        mevcut_context: str = None, max_dosya_gecmisi: int = 15):
         """
         Bir proje için durum satırını günceller (yoksa oluşturur).
         dokunulan_dosya verilirse, son_dokunulan_dosyalar listesine eklenir
@@ -174,18 +187,29 @@ class EpisodicDB:
 
         if gorev_ozeti is None:
             gorev_ozeti = mevcut["son_gorev_ozeti"] if mevcut else None
+        
+        # New fields fallback to existing if not provided
+        if pending_action is None:
+            pending_action = mevcut.get("pending_action") if mevcut else None
+        if son_hata is None:
+            son_hata = mevcut.get("son_hata") if mevcut else None
+        if mevcut_context is None:
+            mevcut_context = mevcut.get("mevcut_context") if mevcut else None
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO proje_durumu (proje_adi, aktif_dizin, son_dokunulan_dosyalar, son_gorev_ozeti, guncelleme_zamani)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO proje_durumu (proje_adi, aktif_dizin, son_dokunulan_dosyalar, son_gorev_ozeti, guncelleme_zamani, pending_action, son_hata, mevcut_context)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(proje_adi) DO UPDATE SET
                     aktif_dizin = excluded.aktif_dizin,
                     son_dokunulan_dosyalar = excluded.son_dokunulan_dosyalar,
                     son_gorev_ozeti = excluded.son_gorev_ozeti,
-                    guncelleme_zamani = excluded.guncelleme_zamani
-            """, (proje_adi, aktif_dizin, json.dumps(dosya_listesi, ensure_ascii=False), gorev_ozeti, int(time.time())))
+                    guncelleme_zamani = excluded.guncelleme_zamani,
+                    pending_action = excluded.pending_action,
+                    son_hata = excluded.son_hata,
+                    mevcut_context = excluded.mevcut_context
+            """, (proje_adi, aktif_dizin, json.dumps(dosya_listesi, ensure_ascii=False), gorev_ozeti, int(time.time()), pending_action, son_hata, mevcut_context))
             conn.commit()
 
     def durum_getir(self, proje_adi: str):

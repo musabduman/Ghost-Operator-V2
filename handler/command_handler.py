@@ -115,6 +115,7 @@ class CommandHandler:
         tool_registry.bind_handler("periyodik_gorev_sil", self._tool_periyodik_gorev_sil)
         tool_registry.bind_handler("proje_hafizasi_ekle", self._tool_proje_hafizasi_ekle)
         tool_registry.bind_handler("proje_hafizasi_sil", self._tool_proje_hafizasi_sil)
+        tool_registry.bind_handler("calisma_durumu_guncelle", self._tool_calisma_durumu_guncelle)
 
     def _proxy_controller(self, user_input: str):
         from core.config import CORE_API_URL, GHOST_TOKEN
@@ -369,6 +370,15 @@ class CommandHandler:
         proje_notu = None
         if success and isim in DURUM_GUNCELLENECEK_ARACLAR:
             proje_notu = self._proje_durumu_guncelle(isim, args)
+        elif not success:
+            # Otomatik son_hata guncellemesi
+            son_proje = self.episodic_db.son_aktif_projeyi_getir()
+            if son_proje:
+                hata_metni = str(result)[:500] if result else "Bilinmeyen hata"
+                self.episodic_db.durum_guncelle(
+                    proje_adi=son_proje["proje_adi"],
+                    son_hata=f"[{isim} başarısız] {hata_metni}"
+                )
 
         donen_metin = f"tool={isim}\nsuccess={str(success).lower()}\nresult={result}"
         if proje_notu:
@@ -914,10 +924,18 @@ class CommandHandler:
             return "Henüz kayıtlı hiçbir proje durumu yok."
 
         dosyalar = json.loads(durum["son_dokunulan_dosyalar"]) if durum["son_dokunulan_dosyalar"] else []
+                
+        bekleyen = durum.get("pending_action", "Yok")
+        hata = durum.get("son_hata", "Yok")
+        baglam = durum.get("mevcut_context", "Bilinmiyor")
+        
         return (
             f"Proje: {durum['proje_adi']}\n"
             f"Aktif Dizin: {durum['aktif_dizin']}\n"
             f"Son Dokunulan Dosyalar: {', '.join(dosyalar[:5])}\n"
+            f"Mevcut Bağlam: {baglam}\n"
+            f"Bekleyen İşlem: {bekleyen}\n"
+            f"Son Hata: {hata}\n"
             f"Son Görev Özeti: {durum['son_gorev_ozeti']}"
         )
 
@@ -1187,3 +1205,19 @@ class CommandHandler:
             return f"Proje hafızasından silindi: {bilgi}"
         except Exception as e:
             return f"Hafızadan silinirken hata: {str(e)}"
+
+
+    def _tool_calisma_durumu_guncelle(self, mevcut_context: str, pending_action: str) -> str:
+        try:
+            son_proje = self.episodic_db.son_aktif_projeyi_getir()
+            if not son_proje:
+                return "Aktif bir proje bulunamadı."
+            
+            self.episodic_db.durum_guncelle(
+                proje_adi=son_proje["proje_adi"],
+                mevcut_context=mevcut_context,
+                pending_action=pending_action
+            )
+            return f"Çalışma durumu güncellendi.\nBağlam: {mevcut_context}\nBekleyen: {pending_action}"
+        except Exception as e:
+            return f"Durum güncellenirken hata: {str(e)}"

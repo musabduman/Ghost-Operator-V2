@@ -428,3 +428,12 @@ ghost_tool(
         "bilgi": ("string", "Silinecek kuralın/bilginin tam metni")
     },
 )(None)
+
+ghost_tool(
+    name="calisma_durumu_guncelle",
+    description="Aktif projedeki çalışma durumunu (bağlam ve bekleyen işlemler) günceller. Görevler arası geçişte veya uzun bir işlemin ortasında güncel state'i kaydetmek için kullan.",
+    params={
+        "mevcut_context": ("string", "Şu an tam olarak ne yapılıyor? (örn: 'Auth modülü yazılıyor')"),
+        "pending_action": ("string", "Sırada bekleyen işlem ne? (örn: 'Testler çalıştırılacak')")
+    },
+)(None)
