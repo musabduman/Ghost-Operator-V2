@@ -28,7 +28,7 @@ def main():
         [sys.executable, "server.py"],
         cwd=base_dir,
         stdout=subprocess.DEVNULL, # Eğer terminalde görmek istersen None yapabilirsin
-        stderr=subprocess.DEVNULL
+        stderr=None
     )
     print("Backend sunucusu başlatıldı (Port 8000).")
     
@@ -39,21 +39,25 @@ def main():
         cwd=frontend_dir,
         shell=True,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stderr=None
     )
     print("Frontend dev sunucusu başlatıldı (Port 5173).")
     
     frontend_url = "http://localhost:5173"
+    backend_url = "http://127.0.0.1:8000/openapi.json"
     
     try:
-        # Frontend'in ayağa kalkmasını bekle
-        if wait_for_server(frontend_url):
+        # Sunucuların ayağa kalkmasını bekle
+        backend_ready = wait_for_server(backend_url)
+        frontend_ready = wait_for_server(frontend_url)
+        
+        if backend_ready and frontend_ready:
             print("Ghost arayüzü yükleniyor...")
             # Masaüstü penceresini aç
             webview.create_window('Ghost Operator', frontend_url, width=1280, height=800, background_color='#111111')
             webview.start()
         else:
-            print("HATA: Frontend sunucusu zaman aşımına uğradı.")
+            print("HATA: Sunuculardan biri zaman aşımına uğradı.")
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     finally:

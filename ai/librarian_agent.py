@@ -8,8 +8,8 @@ from hafıza.episodic_db import EpisodicDB
 from hafıza.rag_hafıza import Bellek
 
 class LibrarianAgent:
-    def __init__(self, model="gemma4:31b-cloud"):
-        self.model = model
+    def __init__(self, model=None):
+        self.model = model or os.getenv("LIBRARIAN_MODEL", "qwen2.5:1.5b")
         self.api_url = "http://localhost:11434/api/chat"
         self.episodic_db = EpisodicDB()
         self.bellek = Bellek()

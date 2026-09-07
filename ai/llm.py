@@ -28,6 +28,7 @@ class GhostState(TypedDict):
     calisan_araclar: Annotated[list, operator.add]
     tool_calls: list
     yazilan_dosyalar: Annotated[list, operator.add]  # Bu turda yazılan dosyalar (tutarlılık için)
+    critic_retry_count: int
 
 
 from core.tool_registry import tool_registry
@@ -48,8 +49,8 @@ class BaseLLM:
 
 # 1. YÖNETİCİ BEYİN
 class ChatLLM(BaseLLM):
-    def __init__(self, api_key=None, model="gpt-oss:120b-cloud"):
-        self.model = model
+    def __init__(self, api_key=None, model=None):
+        self.model = model or os.getenv("SUPERVISOR_MODEL", "qwen3.5:4b")
         self.api_url = "http://localhost:11434/api/chat"
         self.os_name = platform.system()
         
@@ -75,7 +76,7 @@ class ChatLLM(BaseLLM):
         - Fiziksel bir işlemi (uygulama açma, tıklama vb.) bitirmeden "yaptım/açtım" deme — işlemi arka plandaki arayüz yürütüyor, sen "hallediyorum" gibi açık uçlu cevap ver, sonucu tool observation'ı geldikten sonra doğrula.
 
         [ZORUNLU TEKNİK KURALLAR — bunlar gerçekten kırılmaz]
-        1. Aradığın bilgiye ulaştığında veya işlemi tamamladığında gorev_bitti tool'unu çağır. Döngüden çıkmanın tek yolu budur.
+        1. İşlemi tamamen bitirdiğinde gorev_bitti tool'unu çağır. Eğer işlem bitmediyse ancak Patron'a soru sorman veya onay alman gerekiyorsa HİÇBİR tool çağırmadan doğrudan metin olarak sorunu yaz.
         2. kod_iste'nin `dosya` parametresi her zaman "tools/<arac_adi>.py" formatında olmalı — asla sadece dosya adı verme.
         3. kod_iste'nin `talimat` parametresine Python kodu veya markdown yazma; işçiye ne yapması gerektiğini doğal dille anlat, kodu sen yazmıyorsun.
         4. Aktif işletim sistemi: {self.os_name}. Dosya yolu verirken kullanıcı adını tahmin etme, bu sistemin standardına uygun yol kullan.
@@ -232,9 +233,9 @@ class ChatLLM(BaseLLM):
 
 # 2. İŞÇİ BEYİN (artık NVIDIA Build/NIM üzerinden çalışıyor — Ollama'daki
 # qwen3-coder:480b-cloud kaldırıldığı için OpenAI-uyumlu NIM endpoint'ine geçildi)
-class QwenWorker:
-    def __init__(self, model="deepseek-ai/deepseek-v4-flash-0731", api_key=None):
-        self.model = model
+class QwenWorker(BaseLLM):
+    def __init__(self, api_key=None, model=None):
+        self.model = model or os.getenv("WORKER_MODEL", "deepseek-v4-flash:cloud")
         self.api_url = "https://integrate.api.nvidia.com/v1/chat/completions"
         self.api_key = api_key or os.getenv("NVIDIA_API_KEY")
         self.os_name = platform.system()
@@ -318,8 +319,8 @@ class GhostController:
         self.stream_start_callback = stream_start_callback
         self._lock = threading.Lock()
         
-        self.supervisor = ChatLLM(model="gpt-oss:120b-cloud")
-        self.worker = QwenWorker(model="deepseek-ai/deepseek-v4-flash-0731")
+        self.supervisor = ChatLLM(model=os.getenv("SUPERVISOR_MODEL", "qwen3.5:4b"))
+        self.worker = QwenWorker(model=os.getenv("WORKER_MODEL", "deepseek-v4-flash:cloud"))
         
         # ── Forge Guardrail: format drift & rescue ────────────────────────────
         # TOOLS listesi tool_registry singleton'ından geliyor (single source of
@@ -710,6 +711,7 @@ class GhostController:
             "calisan_araclar": [],
             "tool_calls": [],
             "yazilan_dosyalar": [],
+            "critic_retry_count": 0,
         }
 
         config = {"recursion_limit": 100}

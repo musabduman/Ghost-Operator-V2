@@ -52,7 +52,7 @@ class EpisodicDB:
                 cursor.execute("ALTER TABLE arac_gunlukleri ADD COLUMN proje_adi TEXT")
             except:
                 pass
-\n            # 3. Proje Durum (Working State) Tablosu
+            # 3. Proje Durum (Working State) Tablosu
             # Kısa-vadeli buffer (sohbet_gecmisi) ile uzun-vadeli RAG (Bellek) arasında
             # üçüncü bir katman: "şu an hangi projedeyim, en son ne yaptım" bilgisini tutar.
             cursor.execute("""

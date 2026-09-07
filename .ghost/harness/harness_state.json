@@ -86,6 +86,136 @@
       "evidence": "VRAM kullanımını verdi fakat bilgisayar sıcaklığı raporlanmadı; eksik yanıt verildi.",
       "outcome": "",
       "created_at": "2026-08-20T04:13:35.025820+00:00"
+    },
+    {
+      "id": "refine_0009",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, ikinci kullanıcı sorusuna (\"nasılsın\") yanıt verirken soruya doğrudan cevap vermek yerine sadece bir meta açıklama sundu; bu, isteği eksik ve hatalı bir şekilde tamamlamaktadır. Düzeltilmesi gereken: Kullanıcıya \"iyiyim, teşekkür ederim\" gibi doğrudan bir yanıt ver.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:21:49.158510+00:00"
+    },
+    {
+      "id": "refine_0010",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost yanıtını doğrudan vermez, sadece 'iyiyim, teşekkür ederim' şeklinde cevap vermeliydi; meta açıklama yeterli değil.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:21:53.404342+00:00"
+    },
+    {
+      "id": "refine_0011",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, sadece “İyiyim, teşekkür ederim.” şeklinde doğrudan yanıt vermeli, ek meta açıklama, açıklama veya “Sen nasılsın?” sorusu eklememeliydi.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:21:57.496092+00:00"
+    },
+    {
+      "id": "refine_0012",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, kullanıcının sadece \"selam canim\" ifadesine yanıt vermesini bekliyordu; dosya yazma, proje oluşturma ve kod çalıştırma gibi alakasız ve kapsam dışı bilgiler verdi. Kullanıcıya sadece kısa bir selam mesajı vererek isteği karşılamalı.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:26:28.147626+00:00"
+    },
+    {
+      "id": "refine_0013",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, kullanıcı sadece \"selam canım\" demişti; sen tamamen alakasız bir görev planı ve araç çağrılarıyla yanıt verdin. Kullanıcı isteğini selamlaşma şeklinde basit bir yanıtla karşılamalısın, gereksiz teknik detaylar ve araç kullanımı yok. Yanıtını sadece selamlayıcı, uygun bir metinle düzelt.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:29:05.074485+00:00"
+    },
+    {
+      "id": "refine_0014",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost gereksiz sistem ve araç çıktıları ekledi; sadece \"Selam canım!\" demeliydi. Bu fazladan bilgiler hatalı ve eksik bir yanıt oluşturuyor. düzelt: sadece selamlama ifadesi gönder, diğer tüm logları kaldır.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:29:23.327795+00:00"
+    },
+    {
+      "id": "refine_0015",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Kullanıcı sadece “selam canım” diyerek selamlaşma istedi, Ghost alakasız bir GPT‑6 Astra raporu sundu ve konu dışı araç kullandı; hedeflenen basit selamı vermedi.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:43:01.075108+00:00"
+    },
+    {
+      "id": "refine_0016",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nselam canim",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, kullanıcı sadece “selam canım” diyerek selamlaşma istedi ancak alakasız bir GPT‑6 Astra raporu sundu, araç kullandı ve hedeflenen basit selamı vermedi; yalnızca “Selam canım!” gibi kısa selam vermeliydi.",
+      "outcome": "",
+      "created_at": "2026-09-07T08:43:07.799985+00:00"
+    },
+    {
+      "id": "refine_0017",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nkral bana bir uçuş simülatörü yapma sözün vardı onu bi yapar mısın",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost sadece bir plan sundu, dosyaları oluşturmadı ve onay almadı; görevi tamamlamamış.",
+      "outcome": "",
+      "created_at": "2026-09-07T09:01:37.040898+00:00"
+    },
+    {
+      "id": "refine_0018",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nkral bana bir uçuş simülatörü yapma sözün vardı onu bi yapar mısın",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost sadece bir plan sundu, dosyaları oluşturmadı, onay almadı ve projeyi çalıştırmadı; dosyaları tam mutlak yollarla yazıp test ederek görevi tamamlamalı.",
+      "outcome": "",
+      "created_at": "2026-09-07T09:01:45.186167+00:00"
+    },
+    {
+      "id": "refine_0019",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nkral bana bir uçuş simülatörü yapma sözün vardı onu bi yapar mısın",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost sadece bir plan sundu, dosyaları oluşturmadı, onay almadı ve projeyi çalıştırıp test etmedi; talimatları eksiksiz yerine getirmedi.",
+      "outcome": "",
+      "created_at": "2026-09-07T09:01:55.726122+00:00"
+    },
+    {
+      "id": "refine_0020",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nkral bana bir uçuş simülatörü yapma sözün vardı onu bi yapar mısın",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, projenin temel dosyalarını ve yapısını oluşturmuş olsa da uçuş fiziği, kontrol entegrasyonu ve görsel/asset eksikliği nedeniyle gerçek bir uçuş simülatörü sağlamıyor; istenen işlevsellik tamamlanmamış. Lütfen tam kontrol entegrasyonu, çalışan fizik ve çalışır örnek varlıklarla çalışan bir simülasyon sun.",
+      "outcome": "",
+      "created_at": "2026-09-07T09:09:22.735481+00:00"
+    },
+    {
+      "id": "refine_0021",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nkral bana bir uçuş simülatörü yapma sözün vardı onu bi yapar mısın",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, uçuş simülatörü için gerekli Python/Pygame kodlarını ve dosyaları sağlamadı, sadece dosyaların oluşturulduğunu ve kullanıcıdan manuel olarak çalıştırmasını istedi. Hedef olan çalıştırılabilir bir simülatör oluşturma ve sunma görevini eksik ve hatalı tamamladı.",
+      "outcome": "",
+      "created_at": "2026-09-07T09:11:45.056330+00:00"
     }
   ]
 }
