@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "entries": {
+    "prompt": {},
+    "memory": {},
+    "skill": {},
+    "subagent": {}
+  },
+  "refinements": [
+    {
+      "id": "refine_0001",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Talep edilen gerçek VRAM ve sıcaklık verileri sağlanmadı; sadece bir script oluşturuldu ve çalıştırılmadı. Gerçek zamanlı ölçüm ve raporlamayı yaparak yanıt vermelisin.",
+      "outcome": "",
+      "created_at": "2026-08-20T03:59:33.912143+00:00"
+    },
+    {
+      "id": "refine_0002",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, VRAM kullanımını doğru raporladın ancak CPU sıcaklığını \"Bilinmiyor\" olarak döndürdün ve GPU sıcaklığını verdin; kullanıcı sadece VRAM ve bilgisayar (CPU) sıcaklığını istedi. Eksik ve hatalı çıktı. CPU sıcaklığını doğru şekilde al ve sadece istenen iki bilgiyi raporla.",
+      "outcome": "",
+      "created_at": "2026-08-20T03:59:58.524061+00:00"
+    },
+    {
+      "id": "refine_0003",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "CPU sıcaklığı rapor edilmedi; istenen iki bilgi de eksik sunuldu, Ghost sıcaklık verisini doğru şekilde almalı veya alılamıyorsa bunu net ve eksiksiz bir şekilde belirtmelidir.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:02:41.836399+00:00"
+    },
+    {
+      "id": "refine_0004",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "VRAM kullanımını raporlamış ancak CPU/ bilgisayar sıcaklığını alamamış; kullanıcı isteği eksiksiz sıcaklık verisi idi, bu eksik olduğu için işlem başarısız.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:02:53.787702+00:00"
+    },
+    {
+      "id": "refine_0005",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "CPU sıcaklığı alınamadı, eksik çıktı; sıcaklık verisini doğru şekilde alıp raporla.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:03:25.700643+00:00"
+    },
+    {
+      "id": "refine_0006",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "CPU sıcaklığı raporlanmadı; eksik veri, doğru ve tam sıcaklık ölçümü sağlanmalı.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:03:35.734255+00:00"
+    },
+    {
+      "id": "refine_0007",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "VRAM kullanımını sağladı ancak bilgisayar sıcaklığı bilgisi eksik; hem VRAM oranı hem sıcaklık raporu isteniyordu, bu yüzden yanıt eksik.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:11:07.241415+00:00"
+    },
+    {
+      "id": "refine_0008",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\n[SİSTEM NOTU (Hafıza): Geçmiş konuşmalardan/hafızadan şunları hatır...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "VRAM kullanımını verdi fakat bilgisayar sıcaklığı raporlanmadı; eksik yanıt verildi.",
+      "outcome": "",
+      "created_at": "2026-08-20T04:13:35.025820+00:00"
+    }
+  ]
+}
