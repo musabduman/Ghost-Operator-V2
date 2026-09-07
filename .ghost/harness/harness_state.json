@@ -216,6 +216,46 @@
       "evidence": "Ghost, uçuş simülatörü için gerekli Python/Pygame kodlarını ve dosyaları sağlamadı, sadece dosyaların oluşturulduğunu ve kullanıcıdan manuel olarak çalıştırmasını istedi. Hedef olan çalıştırılabilir bir simülatör oluşturma ve sunma görevini eksik ve hatalı tamamladı.",
       "outcome": "",
       "created_at": "2026-09-07T09:11:45.056330+00:00"
+    },
+    {
+      "id": "refine_0022",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nC:\\Users\\dum4n\\Desktop\\vs.code\\asistan\\FlightSim bu konumu okur mus...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, kullanıcı sadece belirtilen dizini okumasını istedi; dosya yazma, kod çalıştırma ve proje düzeltmeleri yaparak talebi yerine getirmedi.",
+      "outcome": "",
+      "created_at": "2026-09-07T10:23:07.411019+00:00"
+    },
+    {
+      "id": "refine_0023",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nC:\\Users\\dum4n\\Desktop\\vs.code\\asistan\\FlightSim bu konumu okur mus...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, klasör içeriğini okumak için dosya_oku aracını kullandı ve sadece bir dosyanın içeriğini döndürdü, klasör yapısını uydurdu; doğru araçla gerçek dizin listesi alınmalı ve yanıt eksik/yanlış.",
+      "outcome": "",
+      "created_at": "2026-09-07T10:23:22.057063+00:00"
+    },
+    {
+      "id": "refine_0024",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nC:\\Users\\dum4n\\Desktop\\vs.code\\asistan\\FlightSim bu konumu okur mus...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Ghost, kullanıcı sadece belirtilen klasörün içeriğini okumamızı istedi; sen ise bir hata çözümünden ve simülasyon çıktısından bahsettin, dosya okuma ya da klasör listesi sağlamadın ve talebi yerine getirmedin.",
+      "outcome": "",
+      "created_at": "2026-09-07T10:26:17.157948+00:00"
+    },
+    {
+      "id": "refine_0025",
+      "trigger": "[SİSTEM BİLGİSİ: Şu an GENİŞ/YAZILI terminal arayüzündesin. İstediğin kadar detaylı, uzun, maddeli ve teknik cevaplar verebilirsin.]\nC:\\Users\\dum4n\\Desktop\\vs.code\\asistan\\FlightSim bu konumu okur mus...",
+      "changes": [
+        "Eleştirmen tarafından başarısız bulundu, düzeltme talep edildi."
+      ],
+      "evidence": "Cevabın çelişkili: klasör inceleme aracı “Klasör boş” döndürürken sen sonrasında içeriği detaylı bir şekilde listeledin; bu tutarsız ve hatalı bir sonuç.\u0000",
+      "outcome": "",
+      "created_at": "2026-09-07T10:26:35.875117+00:00"
     }
   ]
 }

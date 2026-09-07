@@ -76,7 +76,7 @@ class ChatLLM(BaseLLM):
         - Fiziksel bir işlemi (uygulama açma, tıklama vb.) bitirmeden "yaptım/açtım" deme — işlemi arka plandaki arayüz yürütüyor, sen "hallediyorum" gibi açık uçlu cevap ver, sonucu tool observation'ı geldikten sonra doğrula.
 
         [ZORUNLU TEKNİK KURALLAR — bunlar gerçekten kırılmaz]
-        1. İşlemi tamamen bitirdiğinde gorev_bitti tool'unu çağır. Eğer işlem bitmediyse ancak Patron'a soru sorman veya onay alman gerekiyorsa HİÇBİR tool çağırmadan doğrudan metin olarak sorunu yaz.
+        1. Eğer kullanıcıdan onay/ek bilgi bekliyorsan gorev_bitti ÇAĞIRMA — sadece düz metinle soru sor. gorev_bitti SADECE iş fiilen tamamlandığında kullanılır.
         2. kod_iste'nin `dosya` parametresi her zaman "tools/<arac_adi>.py" formatında olmalı — asla sadece dosya adı verme.
         3. kod_iste'nin `talimat` parametresine Python kodu veya markdown yazma; işçiye ne yapması gerektiğini doğal dille anlat, kodu sen yazmıyorsun.
         4. Aktif işletim sistemi: {self.os_name}. Dosya yolu verirken kullanıcı adını tahmin etme, bu sistemin standardına uygun yol kullan.
@@ -583,15 +583,30 @@ class GhostController:
             tool_calls = state.get("tool_calls") or []
             if not tool_calls:
                 # Model tool çağırmadan düz metin cevap verdi (sohbet durumu)
+                logger.warning("[TANI][YONLENDIRICI] tool_calls yok -> END (duz metin cevap verildi)")
                 return END
             isim = tool_calls[0]["function"]["name"]
+            logger.warning(f"[TANI][YONLENDIRICI] tool_calls[0].name={isim}")
             if isim == "kod_iste":
                 return "coder"
             if isim == "gorev_bitti":
                 return "critic"
             return "tools"
 
+        def _gorev_bitti_tc_id(state: GhostState):
+            """Mesaj geçmişinde en son çağrılan 'gorev_bitti' tool_call'ının id'sini bulur.
+            Hem başarı hem başarısızlık yolunda bu tool_call'ı gerçek bir 'tool'
+            mesajıyla kapatabilmek için kullanılıyor (chat template'lerde 'system'
+            mesajından çok daha güvenilir)."""
+            for m in reversed(state["messages"]):
+                if m.get("role") == "assistant" and m.get("tool_calls"):
+                    for tc in m["tool_calls"]:
+                        if tc["function"]["name"] == "gorev_bitti":
+                            return tc.get("id")
+            return None
+
         def critic_node(state: GhostState):
+            logger.warning(f"[TANI][CRITIC] critic_node'a girildi. mevcut critic_retry_count={state.get('critic_retry_count', 0)}")
             # İlk mesaj (kullanıcı talebi) (system mesajından sonraki ilk user mesajı)
             ilk_istek = state["messages"][1]["content"] if len(state["messages"]) > 1 else ""
             
@@ -623,7 +638,8 @@ class GhostController:
                 Kurallar (KESİN İTAAT ET):
                 1. Çıktının İLK SATIRI sadece 1 veya 0 rakamı olmak ZORUNDADIR.
                 2. Eğer Ghost işlemi eksiksiz ve hatasız tamamlamışsa SADECE 1 yaz ve bitir. Başka hiçbir şey yazma.
-                3. Eğer Ghost'un cevabı yanlış, eksik veya hedefe ulaşmamışsa İLK SATIRA 0 yaz. İKİNCİ SATIRA Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
+                3. Eğer Ghost kullanıcıdan bir plan/işlem için onay istiyorsa ve bu meşru bir ara adımsa, bunu başarısızlık sayma; 1 yazarak devam etmesine izin ver.
+                4. Eğer Ghost'un cevabı yanlış, eksik veya hedefe ulaşmamışsa İLK SATIRA 0 yaz. İKİNCİ SATIRA Ghost'un neden başarısız olduğunu ve neyi düzeltmesi gerektiğini kısa, sert ve net bir dille açıkla. 
                 Asla kod yazma, asla yorum yapma. Sadece 1 veya 0 ile başla."""
 
             try:
@@ -633,19 +649,12 @@ class GhostController:
                 
                 # Güvenlik için ilk satırı (veya ilk harfi) kontrol et
                 ilk_satir = degerlendirme.split("\n")[0].strip()
+                logger.warning(f"[TANI][CRITIC] eleştirmen ham çıktı ilk satırı: {ilk_satir!r} (tam çıktı: {degerlendirme[:200]!r})")
                 
                 if "1" in ilk_satir:
                     # Görev başarıyla onaylandığında, açık kalan 'gorev_bitti' tool_call'ını kapatmak için
                     # boş mesaj yerine sahte bir tool observation dönüyoruz. Yoksa API hata verir/model kafası karışır.
-                    tc_id = None
-                    for m in reversed(state["messages"]):
-                        if m.get("role") == "assistant" and m.get("tool_calls"):
-                            for tc in m["tool_calls"]:
-                                if tc["function"]["name"] == "gorev_bitti":
-                                    tc_id = tc.get("id")
-                                    break
-                            if tc_id:
-                                break
+                    tc_id = _gorev_bitti_tc_id(state)
                                 
                     if tc_id:
                         return {"messages": [{
@@ -656,11 +665,36 @@ class GhostController:
                         }]}
                     return {"messages": []}
                 else:
+                    retry_count = state.get("critic_retry_count", 0)
+                    
                     # 0 durumunda açıklama alt satırlardadır
                     hata_nedeni = "\n".join(degerlendirme.split("\n")[1:]).strip()
                     if not hata_nedeni:
                         hata_nedeni = degerlendirme # Eğer her şeyi tek satıra yazdıysa
                         
+                    if retry_count >= 2:
+                        logger.warning(f"[TANI][CRITIC] retry_count={retry_count} >= 2 -> pes edip kullanıcıya soruyor, döngü burada bitmeli")
+                        # Pes ederken de gorev_bitti tool_call'ı açık kalmasın diye kapatıyoruz.
+                        tc_id = _gorev_bitti_tc_id(state)
+                        pes_mesaji = f"Patron, bunu otomatik tamamlayamadım, şunu netleştirir misin:\n{hata_nedeni}"
+                        if tc_id:
+                            return {
+                                "messages": [{
+                                    "role": "tool",
+                                    "content": pes_mesaji,
+                                    "tool_call_id": tc_id,
+                                    "name": "gorev_bitti"
+                                }],
+                                "critic_retry_count": retry_count + 1
+                            }
+                        return {
+                            "messages": [{
+                                "role": "assistant",
+                                "content": pes_mesaji
+                            }],
+                            "critic_retry_count": retry_count + 1
+                        }
+
                     # Hata nedenini kalıcı hafızaya kaydet
                     from hafıza.harness_state import get_harness_state
                     harness = get_harness_state()
@@ -671,20 +705,52 @@ class GhostController:
                         evidence=hata_nedeni
                     )
                         
-                    # Modelin eleştiriyi bir sistem veya araç çıktısı gibi alıp düzeltebilmesi için user mesajı veriyoruz
+                    # ── DEĞİŞİKLİK: eleştiriyi artık serbest bir "system"/"user" mesajı
+                    # olarak enjekte ETMİYORUZ. Bunun yerine modelin kendi açtığı
+                    # 'gorev_bitti' tool_call'ına gerçek bir "tool" gözlemi olarak
+                    # bağlıyoruz. Sebep: chat template'ler (özellikle küçük yerel
+                    # modellerde) sohbetin ortasına düşen ikinci bir system mesajını
+                    # güvenilir şekilde ayırt etmiyor / user mesajıyla karıştırabiliyor.
+                    # Model zaten kendi çağırdığı bir tool'un sonucunu beklediği için
+                    # "tool" rolü kesin ve doğal şekilde tanınıyor.
+                    uyari_icerik = f"[SİSTEM ELEŞTİRMENİ UYARISI]: Cevabın veya eylemin yetersiz bulundu. Lütfen şu eleştiriye göre işlemini düzelt ve tekrar dene:\n{hata_nedeni}"
+                    tc_id = _gorev_bitti_tc_id(state)
+                    logger.warning(f"[TANI][CRITIC] '0' verdisi, retry_count {retry_count} -> {retry_count + 1}, tc_id bulundu mu={bool(tc_id)}")
+
+                    if tc_id:
+                        return {
+                            "messages": [{
+                                "role": "tool",
+                                "content": uyari_icerik,
+                                "tool_call_id": tc_id,
+                                "name": "gorev_bitti"
+                            }],
+                            "critic_retry_count": retry_count + 1
+                        }
+
+                    # tc_id bulunamazsa (beklenmedik durum) eski yönteme düş
                     return {
                         "messages": [{
-                            "role": "user", 
-                            "content": f"[SİSTEM ELEŞTİRMENİ UYARISI]: Cevabın veya eylemin yetersiz bulundu. Lütfen şu eleştiriye göre işlemini düzelt ve tekrar dene:\n{hata_nedeni}"
-                        }]
+                            "role": "system", 
+                            "content": uyari_icerik
+                        }],
+                        "critic_retry_count": retry_count + 1
                     }
             except Exception as e:
                 # Çökerse akışı kesmemek için sessizce geç
+                logger.warning(f"[TANI][CRITIC] İstisna yakalandı, sessizce geçiliyor: {e}")
                 return {"messages": []}
 
         def critic_yonlendirici(state: GhostState):
-            if state["messages"] and "[SİSTEM ELEŞTİRMENİ UYARISI]" in state["messages"][-1].get("content", ""):
+            son_mesaj = state["messages"][-1] if state["messages"] else {}
+            son_mesaj_icerik = son_mesaj.get("content", "")
+            # Not: uyarı artık genelde bir "tool" mesajı içinde geliyor (bkz. critic_node),
+            # ama tc_id bulunamadığı nadir durumda hâlâ "system" olarak da gelebilir.
+            # Bu yüzden role'e bakmaksızın işaret dizesini arıyoruz.
+            if "[SİSTEM ELEŞTİRMENİ UYARISI]" in son_mesaj_icerik:
+                logger.warning("[TANI][CRITIC_YONLENDIRICI] uyarı tespit edildi -> supervisor'a dönülüyor")
                 return "supervisor"
+            logger.warning("[TANI][CRITIC_YONLENDIRICI] uyarı yok -> END")
             return END
 
         workflow.add_node("supervisor", supervisor_node)
@@ -717,6 +783,7 @@ class GhostController:
         config = {"recursion_limit": 100}
 
         onceki_mesaj_sayisi = len(mesajlar)
+        logger.warning(f"[TANI][RAW_SUPERVISOR_CALL] YENİ ÜST-SEVİYE ÇAĞRI BAŞLADI (mesaj sayısı={onceki_mesaj_sayisi})")
         try:
             sonuc_state = self.graph.invoke(baslangic_durumu, config)
         except Exception as graph_hatasi:
@@ -740,8 +807,14 @@ class GhostController:
             else:
                 nihai_cevap = f"Patron, işlem sırasında beklenmedik bir sistem hatası oluştu: {hata_str[:200]}"
             model_name = "GPT-OSS 120B (Yönetici)"
+            logger.warning("[TANI][RAW_SUPERVISOR_CALL] ÜST-SEVİYE ÇAĞRI recursion/hata ile bitti")
             return nihai_cevap, model_name
         yeni_mesajlar = sonuc_state["messages"][onceki_mesaj_sayisi:]
+        logger.warning(
+            f"[TANI][RAW_SUPERVISOR_CALL] ÜST-SEVİYE ÇAĞRI normal bitti. "
+            f"Bu turda eklenen mesaj sayısı={len(yeni_mesajlar)}, "
+            f"final critic_retry_count={sonuc_state.get('critic_retry_count', 0)}"
+        )
 
         # UI etiketi için: bu turda kod_iste çağrıldı mı?
         kod_yazildi_mi = any(
