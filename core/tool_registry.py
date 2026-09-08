@@ -437,3 +437,11 @@ ghost_tool(
         "pending_action": ("string", "Sırada bekleyen işlem ne? (örn: 'Testler çalıştırılacak')")
     },
 )(None)
+
+ghost_tool(
+    name="insana_sor",
+    description="Döngüyü duraklatıp Patron'dan onay, geri bildirim veya bilgi almanı sağlar. Sorduğun soru arayüzde görünür ve Patron'un vereceği cevap gelene kadar arka planda beklenir. Soru sormak istediğinde GOREV_BITTI yerine bu aracı kullan.",
+    params={
+        "soru": ("string", "Patron'a yöneltilecek soru veya onay metni")
+    },
+)(None)

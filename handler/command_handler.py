@@ -84,6 +84,9 @@ class CommandHandler:
         self.su_an_mesgul = False
         self.aktif_plan = None
         self._sorulmus_dizinler: set = set()  # Aynı oturumda aynı dizin için tekrar sormayı engelle
+        self.waiting_for_user = False
+        self.waiting_event = threading.Event()
+        self.user_answer = ""
 
         # Single Source of Truth: Tüm çalıştırma fonksiyonlarını tool_registry'ye bağla
         tool_registry.bind_handler("arama", self._tool_search)
@@ -116,6 +119,28 @@ class CommandHandler:
         tool_registry.bind_handler("proje_hafizasi_ekle", self._tool_proje_hafizasi_ekle)
         tool_registry.bind_handler("proje_hafizasi_sil", self._tool_proje_hafizasi_sil)
         tool_registry.bind_handler("calisma_durumu_guncelle", self._tool_calisma_durumu_guncelle)
+        tool_registry.bind_handler("insana_sor", self._tool_insana_sor)
+
+    def _tool_insana_sor(self, soru: str) -> str:
+        # Soruyu arayüze bas (kullanıcı görsün diye)
+        self.app.record_message("ghost", soru)
+        if self.app.voice_mode:
+            self._asistan_konus(soru)
+            
+        # Kullanıcı cevap verene kadar bekle
+        self.waiting_for_user = True
+        self.waiting_event.clear()
+        
+        # Arayüzü aktif hale getir (mesaj yazabilmesi için)
+        self.su_an_mesgul = False
+        self._set_ui_entry_state("normal", placeholder="Cevapla...")
+        
+        # Bekle (Event trigger olana kadar LangGraph node thread'i bloklanır)
+        self.waiting_event.wait()
+        
+        # Yeniden meşgule al
+        self.su_an_mesgul = True
+        return f"[Patron'un Cevabı]: {self.user_answer}"
 
     def _proxy_controller(self, user_input: str):
         from core.config import CORE_API_URL, GHOST_TOKEN
@@ -160,9 +185,6 @@ class CommandHandler:
         self.app.after(0, update)
 
     def handle(self, event=None, voice_text=None):
-        if self.su_an_mesgul:
-            return
-
         self.son_komut_sesli = (event is None)
         
         if not self.son_komut_sesli:
@@ -176,6 +198,19 @@ class CommandHandler:
             user_input = ""
 
         if not user_input:
+            return
+
+        if self.waiting_for_user:
+            self.user_answer = user_input
+            self.waiting_for_user = False
+            self.app.record_message("user", user_input)
+            if hasattr(self.app, 'entry') and self.app.entry.winfo_exists():
+                self.app.entry.delete(0, "end")
+            self._set_ui_entry_state("disabled", placeholder="Ghost düşünüyor...")
+            self.waiting_event.set()
+            return
+
+        if self.su_an_mesgul:
             return
         
         lower_input = user_input.lower()

@@ -6,6 +6,7 @@ import threading
 import requests
 from hafıza.episodic_db import EpisodicDB
 from hafıza.rag_hafıza import Bellek
+import os 
 
 class LibrarianAgent:
     def __init__(self, model=None):
@@ -138,6 +139,9 @@ class LibrarianAgent:
                 
             try:
                 islemler = json.loads(raw_content)
+                proje = self.episodic_db.son_aktif_projeyi_getir()
+                proje_adi = proje["proje_adi"] if proje else None
+
                 for islem in islemler:
                     action = islem.get("action")
                     try:
