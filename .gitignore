@@ -13,3 +13,6 @@ ghost_mesgul.lock
 api_key.env
 *.mp3
 Ghost_Data/
+
+prime_agent_temp/
+forge_temp/
