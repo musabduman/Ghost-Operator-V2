@@ -1,18 +1,43 @@
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+.cache
+.pytest_cache/
+
+# Environment & Secrets
+.env
+api_key.env
+apı_key.env
+*.env
+
+# Local App & User Data
+Ghost_Data/
+Desktop/
 ghost_hafıza.json
 model/
-__pycache__/
-.cache
-ai.__pycache__/
-Desktop/
-apı_key.env
-.env
-sessions/sessions
-eski_kodlar
-ghost_mesgul.lock
-
-api_key.env
+eski_kodlar/
 *.mp3
-Ghost_Data/
+ghost_baslat.vbs
 
+# Sessions & Database
+sessions/sessions/
+sessions/*.db
+sessions/ghost.db
+.ghost/harness/harness_state.json
+
+# Locks & Signal files
+*.lock
+ghost_mesgul.lock
+uyandir_sinyal*.txt
+
+# Temporary & Scratch folders
+scratch/
 prime_agent_temp/
 forge_temp/
+allfileshas*.txt
+commit_msg.txt
