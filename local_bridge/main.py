@@ -12,6 +12,14 @@ from vison.vison import minimax_vision_analiz
 from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
 from tools.browser_tool import browser_google_search
 from core.fs import kodu_calistir, dosya_bul
+from core.tool_registry import (
+    TOOL_EKRAN_GORUNTUSU,
+    TOOL_WHATSAPP_EKRANI_OKU,
+    TOOL_WHATSAPP_MESAJ_GONDER,
+    TOOL_BROWSER_SEARCH,
+    TOOL_KODU_CALISTIR,
+    TOOL_UYGULAMA_AC,
+)
 import PIL.ImageGrab
 import base64
 from core.config import GHOST_TOKEN
@@ -54,8 +62,8 @@ def execute_tool(req: ToolRequest):
         return {"basarili": False, "mesaj": f"GÜVENLİK ENGELİ: '{tool}' aracını kullanmak için gerekli izne sahip değilsin. Lütfen masaüstü uygulamasından (veya permissions.json dosyasından) bu araca izin ver."}
 
     try:
-        if tool == "ekran_goruntusu":
-            soru = params.get("soru", "Ekranda ne var?")
+        if tool == TOOL_EKRAN_GORUNTUSU:
+            soru = params.get("soru") or params.get("mesaj", "Ekranda ne var?")
             
             from core.config import TEMP_DIR
             kayit_yolu = os.path.join(TEMP_DIR, "bridge_screenshot.png")
@@ -67,29 +75,29 @@ def execute_tool(req: ToolRequest):
             basarili, saf_kod, mesaj = minimax_vision_analiz(soru, kayit_yolu)
             return {"basarili": basarili, "saf_kod": saf_kod, "mesaj": mesaj}
 
-        elif tool == "whatsapp_mesaj_gonder":
+        elif tool == TOOL_WHATSAPP_MESAJ_GONDER:
             kisi = params.get("kisi")
             mesaj = params.get("mesaj")
             sonuc = whatsapp_mesaj_gonder(kisi, mesaj)
             return {"mesaj": sonuc}
 
-        elif tool == "whatsapp_ekrani_oku":
+        elif tool == TOOL_WHATSAPP_EKRANI_OKU:
             sonuc = whatsapp_ekrani_yorumla()
             return {"mesaj": sonuc}
 
-        elif tool == "browser_search":
+        elif tool == TOOL_BROWSER_SEARCH:
             sorgu = params.get("sorgu")
             sonuc = browser_google_search(sorgu)
             return {"mesaj": sonuc}
 
-        elif tool == "kodu_calistir":
+        elif tool == TOOL_KODU_CALISTIR:
             dosya_adi = params.get("dosya_adi")
             aktif_proje = params.get("aktif_proje")
             gercek_yol = dosya_bul(dosya_adi, aktif_proje)
             sonuc = kodu_calistir(gercek_yol)
             return {"sonuc": sonuc}
 
-        elif tool == "uygulama_ac":
+        elif tool == TOOL_UYGULAMA_AC:
             import subprocess
             uygulama_yolu = params.get("yol")
             if not os.path.exists(uygulama_yolu):

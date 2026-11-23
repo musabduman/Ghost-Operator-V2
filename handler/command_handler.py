@@ -28,6 +28,7 @@ from tools.whatsapp_tool import whatsapp_mesaj_gonder, whatsapp_ekrani_yorumla
 from core.fs import (
     akilli_yol_cozucu, derin_arama, kodu_calistir
 )
+from core.tool_registry import TOOL_EKRAN_GORUNTUSU, TOOL_WHATSAPP_EKRANI_OKU
  
 
 SESLI_MOD_GECIS = ["sesli moda geç", "orb moduna geç", "arayüzü küçült", "küçük ekrana geç", "kompakt mod"]
@@ -732,7 +733,7 @@ class CommandHandler:
         from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
         if USE_LOCAL_BRIDGE:
             try:
-                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "whatsapp_ekrani_yorumla", "parametreler": {}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": TOOL_WHATSAPP_EKRANI_OKU, "parametreler": {}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
                 if res.status_code == 200:
                     data = res.json()
                     return data.get("mesaj", "WhatsApp ekranı okundu (Local Bridge).")
@@ -841,7 +842,7 @@ class CommandHandler:
         from core.config import USE_LOCAL_BRIDGE, LOCAL_BRIDGE_URL, GHOST_TOKEN
         if USE_LOCAL_BRIDGE:
             try:
-                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": "ekran_goruntusu_al", "parametreler": {"mesaj": ne_arayacagim}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
+                res = requests.post(LOCAL_BRIDGE_URL, json={"tool_adi": TOOL_EKRAN_GORUNTUSU, "parametreler": {"soru": ne_arayacagim, "mesaj": ne_arayacagim}}, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=60)
                 if res.status_code == 200:
                     data = res.json()
                     return data.get("mesaj", "Ekran yorumlandı (Local Bridge).")

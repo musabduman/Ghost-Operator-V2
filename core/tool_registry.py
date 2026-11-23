@@ -8,6 +8,24 @@ arasında senkronizasyon kaybı veya unutulan araç sorunu yaşanmaz.
 """
 from typing import Callable, Any, Dict, List, Optional
 
+# ── Canonical Bridge Tool Name Constants ─────────────────────────────────────
+TOOL_EKRAN_GORUNTUSU = "ekran_goruntusu"
+TOOL_WHATSAPP_EKRANI_OKU = "whatsapp_ekrani_oku"
+TOOL_WHATSAPP_MESAJ_GONDER = "whatsapp_mesaj_gonder"
+TOOL_BROWSER_SEARCH = "browser_search"
+TOOL_KODU_CALISTIR = "kodu_calistir"
+TOOL_UYGULAMA_AC = "uygulama_ac"
+
+BRIDGE_TOOLS = {
+    TOOL_EKRAN_GORUNTUSU,
+    TOOL_WHATSAPP_EKRANI_OKU,
+    TOOL_WHATSAPP_MESAJ_GONDER,
+    TOOL_BROWSER_SEARCH,
+    TOOL_KODU_CALISTIR,
+    TOOL_UYGULAMA_AC,
+}
+
+
 
 class ToolRegistry:
     def __init__(self):
