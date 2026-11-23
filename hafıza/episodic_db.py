@@ -112,6 +112,19 @@ class EpisodicDB:
                     okundu_mu INTEGER DEFAULT 0
                 )
             """)
+
+            # 7. Görev & Hafıza Özetleri Tablosu (gorev_bitti çıktısı doğrudan buraya yazılır)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS gorev_ozetleri (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    proje_adi TEXT,
+                    timestamp INTEGER,
+                    ozet TEXT,
+                    hafiza_notu TEXT,
+                    is_embedded INTEGER DEFAULT 0
+                )
+            """)
             conn.commit()
 
     def mesaj_kaydet(self, session_id: str, role: str, content: str):
@@ -352,3 +365,42 @@ class EpisodicDB:
             cursor = conn.cursor()
             cursor.execute("UPDATE bildirimler SET okundu_mu = 1")
             conn.commit()
+
+    # ── Görev & Hafıza Özetleri ──────────────────────────────────────────
+    def gorev_ozeti_kaydet(self, ozet: str, hafiza_notu: str = "", session_id: str = None, proje_adi: str = None) -> int:
+        """Her görev tamamlandığında modelin ürettiği özet ve hafıza notunu SQL'e kaydeder."""
+        if not proje_adi:
+            son_proje = self.son_aktif_projeyi_getir()
+            proje_adi = son_proje["proje_adi"] if son_proje else None
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO gorev_ozetleri (session_id, proje_adi, timestamp, ozet, hafiza_notu, is_embedded)
+                   VALUES (?, ?, ?, ?, ?, 0)""",
+                (session_id, proje_adi, int(time.time()), ozet, hafiza_notu)
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    def gorev_ozetini_embedded_isaretle(self, ozet_id: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE gorev_ozetleri SET is_embedded = 1 WHERE id = ?", (ozet_id,))
+            conn.commit()
+
+    def son_gorev_ozetlerini_getir(self, limit: int = 5, proje_adi: str = None) -> list:
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if proje_adi:
+                cursor.execute(
+                    "SELECT * FROM gorev_ozetleri WHERE proje_adi = ? ORDER BY id DESC LIMIT ?",
+                    (proje_adi, limit)
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM gorev_ozetleri ORDER BY id DESC LIMIT ?",
+                    (limit,)
+                )
+            return [dict(row) for row in cursor.fetchall()]

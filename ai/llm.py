@@ -151,7 +151,14 @@ class ChatLLM(BaseLLM):
         except Exception as e:
             logger.error(f"Harness state yüklenemedi: {e}")
 
-        # Project L2 Memory
+        # Temel kuralları sakla (dinamik L2 bellek güncellemeleri için taban)
+        self.temel_kurallar = self.ana_kurallar
+
+        self.mesaj_gecmisi = [{"role": "system", "content": self.guncel_sistem_promptu()}]
+
+    def guncel_sistem_promptu(self) -> str:
+        """Sistem promptuna güncel Proje L2 kurallarını dinamik olarak ekler."""
+        prompt = getattr(self, "temel_kurallar", self.ana_kurallar)
         try:
             from hafıza.episodic_db import EpisodicDB
             from hafıza.project_memory import ProjectMemoryL2
@@ -161,16 +168,14 @@ class ChatLLM(BaseLLM):
                 l2 = ProjectMemoryL2(son_proje["aktif_dizin"])
                 l2_context = l2.get_formatted_context()
                 if l2_context:
-                    self.ana_kurallar += f"\n\n{l2_context}\n"
+                    prompt = f"{prompt}\n\n{l2_context}\n"
         except Exception as e:
-            logger.error(f"Project L2 Memory yüklenemedi: {e}")
-
-
-        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+            logger.debug(f"Dinamik L2 bağlamı alınamadı: {e}")
+        return prompt
 
     def load_history(self, gecmis_mesajlar: list):
         """Bir oturuma geçiş yapıldığında geçmiş mesajları Sistem bağlamı olarak yükler."""
-        self.mesaj_gecmisi = [{"role": "system", "content": self.ana_kurallar}]
+        self.mesaj_gecmisi = [{"role": "system", "content": self.guncel_sistem_promptu()}]
         if not gecmis_mesajlar:
             return
             
@@ -328,18 +333,8 @@ class GhostController:
         self._forge_validator = build_validator(TOOLS)
         logger.debug("[Forge] GhostController: validator başlatıldı.")
 
-        # Proje hafızası: worker'a "bu projede zaten ne var" bağlamını
-        # vermek için — genel Bellek (rag_hafıza.py) ile karışmasın diye
-        # ayrı bir Chroma koleksiyonu kullanıyor.
-        self.proje_bellek = ProjeKodBellek()
-        self.episodic_db = EpisodicDB()
-
-        # Bir turun (görev tamamlandı / sohbet cevabı / recursion limit'e
-        # çarpıp vazgeçildi — hepsi dahil) KESİN olarak bittiği tek an burası.
-        # command_handler.py bunu aktif_plan'ı sıfırlamak için kullanıyor —
-        # eskiden bu reset 'gorev_bitti'nin _execute_tool_call'dan geçtiği
-        # varsayımıyla yanlış yerde yapılıyordu, hiç tetiklenmiyordu.
-        self.on_task_end = None
+        self.son_gorev_ozeti: str = ""
+        self.son_hafiza_notu: str = ""
 
         self.graph = self._build_graph()
 
@@ -770,6 +765,10 @@ class GhostController:
 
     def _raw_supervisor_call(self, gecici_mesajlar=None) -> tuple[str, str]:
         mesajlar = gecici_mesajlar if gecici_mesajlar is not None else self.supervisor.mesaj_gecmisi
+        # Sistem promptunu güncel L2 proje kurallarıyla tazele
+        if mesajlar and mesajlar[0].get("role") == "system":
+            mesajlar[0]["content"] = self.supervisor.guncel_sistem_promptu()
+
         baslangic_durumu = {
             "messages": mesajlar,
             "son_istenen_dosya": "",
@@ -824,18 +823,24 @@ class GhostController:
         )
 
         # Nihai cevap artık serbest metinden regex ile temizlenmiyor;
-        # gorev_bitti tool_call'ının 'ozet' argümanından doğrudan okunuyor.
+        # gorev_bitti tool_call'ının 'ozet' ve 'hafiza_notu' argümanlarından doğrudan okunuyor.
         nihai_cevap = ""
+        hafiza_notu = ""
         for m in yeni_mesajlar:
             if m.get("role") != "assistant":
                 continue
             tool_calls = m.get("tool_calls") or []
             for tc in tool_calls:
                 if tc["function"]["name"] == "gorev_bitti":
-                    nihai_cevap = tc["function"]["arguments"].get("ozet", "")
+                    args = tc["function"]["arguments"]
+                    nihai_cevap = args.get("ozet", "")
+                    hafiza_notu = args.get("hafiza_notu", "")
             if not tool_calls and m.get("content"):
                 # Model hiç tool çağırmadan düz cevap verdiyse (sohbet durumu)
                 nihai_cevap = m["content"]
+
+        self.son_gorev_ozeti = nihai_cevap
+        self.son_hafiza_notu = hafiza_notu
 
         # Eğer limit aşımı olduysa ve nihai bir cevap üretemediysek,
         # LLM'e sadece nerede takıldığını ve sorunun ne olduğunu açıklatıyoruz.
@@ -863,10 +868,18 @@ class GhostController:
         model_name = "Qwen 480B (Mühendis Kodladı)" if kod_yazildi_mi else "GPT-OSS 120B (Yönetici)"
 
         # Tur burada KESİN olarak bitti (başarı/limit aşımı/sohbet fark etmez).
-        # command_handler.py bunu aktif_plan'ı sıfırlamak için kullanıyor.
+        # command_handler.py bunu aktif_plan'ı sıfırlamak ve hafıza kaydetmek için kullanıyor.
         if self.on_task_end:
             try:
-                self.on_task_end()
+                import inspect
+                sig = inspect.signature(self.on_task_end)
+                param_count = len(sig.parameters)
+                if param_count >= 2:
+                    self.on_task_end(nihai_cevap, hafiza_notu)
+                elif param_count == 1:
+                    self.on_task_end(nihai_cevap)
+                else:
+                    self.on_task_end()
             except Exception as e:
                 print(f"[SİSTEM UYARISI] on_task_end callback hatası: {e}")
 

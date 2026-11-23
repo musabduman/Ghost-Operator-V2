@@ -445,19 +445,48 @@ class CommandHandler:
             return False
         return True
 
-    def gorevi_sonlandir(self):
+    def gorevi_sonlandir(self, nihai_cevap: str = "", hafiza_notu: str = ""):
         """
         GhostController her _raw_supervisor_call bitiminde (görev tamamlandı,
         sohbet cevabı döndü ya da recursion limit'e çarpıp vazgeçti — hepsinde)
-        bunu çağırır. Eskiden aktif_plan sıfırlaması _execute_tool_call içinde
-        'gorev_bitti' geldiğinde yapılıyordu ama gorev_bitti o fonksiyona HİÇ
-        uğramıyor (yonlendirici onu doğrudan critic/END'e yönlendiriyor), yani
-        o satır hiç çalışmıyordu ve aktif_plan bir kere set edildikten sonra
-        uygulama kapanana kadar HER gelecek göreve sızıyordu. Artık üst
-        seviyede, her turun kesin olarak bittiği tek yerde sıfırlanıyor.
+        bunu çağırır.
+
+        Aktif planı sıfırlar, modelin ürettiği teknik hafıza notunu veya nihai
+        özeti hem SQLite (gorev_ozetleri) hem de Vektör RAG (Bellek) tablosuna
+        kalıcı olarak işler.
         """
         self.aktif_plan = None
         self._sorulmus_dizinler = set()  # Oturum başında sıfırla
+
+        # ── SQL ve RAG Özet Hafıza Pipeline ──────────────────────────────
+        try:
+            metin = (hafiza_notu or nihai_cevap or "").strip()
+            if metin and len(metin) > 10:
+                son_proje = self.episodic_db.son_aktif_projeyi_getir()
+                proje_adi = son_proje["proje_adi"] if son_proje else None
+
+                # 1. SQL gorev_ozetleri tablosuna ekle
+                ozet_id = self.episodic_db.gorev_ozeti_kaydet(
+                    ozet=nihai_cevap,
+                    hafiza_notu=hafiza_notu,
+                    proje_adi=proje_adi
+                )
+
+                # 2. ChromaDB RAG hafızaya yaz (yalnızca kaliteli teknik not veya özet)
+                metadata = {
+                    "kaynak": "gorev_ozeti",
+                    "timestamp": int(time.time()),
+                }
+                if proje_adi:
+                    metadata["proje_adi"] = proje_adi
+
+                self.bellek.bellege_yaz(metin, metadata=metadata)
+                if ozet_id:
+                    self.episodic_db.gorev_ozetini_embedded_isaretle(ozet_id)
+
+                self.app.log("[HAFIZA] Görev özeti kalıcı hafızaya (SQL+RAG) işlendi.", "green")
+        except Exception as e:
+            self.app.log(f"[HAFIZA UYARISI] Görev özeti kaydedilemedi: {e}", "yellow")
 
     def _proje_durumu_guncelle(self, isim: str, args: dict) -> str:
         """

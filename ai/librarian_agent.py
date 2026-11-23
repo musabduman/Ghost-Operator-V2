@@ -1,3 +1,13 @@
+"""
+ai/librarian_agent.py — DEPRECATED (Emekliye Ayrıldı)
+
+Bu arka plan thread'i yerine artık doğrudan görev sonlandırma pipeline'ı
+(gorev_bitti -> episodic_db.gorev_ozetleri -> Bellek RAG) kullanılmaktadır.
+Böylece ek Ollama polling maliyeti ve çökmeler önlenmiştir.
+"""
+import warnings
+warnings.warn("LibrarianAgent emekliye ayrıldı; gorev_bitti SQL+RAG pipeline'ı devrededir.", DeprecationWarning)
+
 from core.config import GHOST_TOKEN
 import re
 import time

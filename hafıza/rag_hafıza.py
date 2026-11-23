@@ -87,11 +87,18 @@ class Bellek:
 
     # ── Sorgulama ────────────────────────────────────────────────────────
 
-    def sorgula(self, soru, limit=3, proje_adi=None):
+    def sorgula(self, soru, limit=3, proje_adi=None, max_distance=0.45):
         """Vektör belleğini sorgular.
 
+        Args:
+            soru: Aranacak doğal dil sorusu.
+            limit: Maksimum sonuç sayısı.
+            proje_adi: Filtrelenecek proje adı (opsiyonel).
+            max_distance: Maksimum mesafe eşiği (varsayılan: 0.45). Eşiğin üstündeki
+                alakasız kayıtlar elenir (Context Pollution koruması).
+
         Returns:
-            list[str] — bulunan dokümanlar (boş liste olabilir).
+            list[str] — bulunan ve eşiği geçen alakalı dokümanlar (boş liste olabilir).
 
         Hata durumunda ``self.son_hata`` doldurulur; çağıran taraf bu
         değeri okuyarak LangGraph'a temiz uyarı geçebilir.
@@ -102,12 +109,23 @@ class Bellek:
             results = self.collection.query(
                 query_embeddings=[embedding],
                 n_results=limit,
-                where=where
+                where=where,
+                include=["documents", "distances"]
             )
             self.son_hata = None
-            if results["documents"] and results["documents"][0]:
-                return results["documents"][0]
-            return []
+            if not results["documents"] or not results["documents"][0]:
+                return []
+
+            docs = results["documents"][0]
+            distances = results.get("distances", [[]])[0] if results.get("distances") else []
+
+            alakali_dokumanlar = []
+            for i, doc in enumerate(docs):
+                dist = distances[i] if i < len(distances) else 0.0
+                if max_distance is None or dist <= max_distance:
+                    alakali_dokumanlar.append(doc)
+
+            return alakali_dokumanlar
 
         except Exception as e:
             self.son_hata = format_embedding_error(e)

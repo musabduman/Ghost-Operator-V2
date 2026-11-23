@@ -351,7 +351,11 @@ ghost_tool(
 ghost_tool(
     name="gorev_bitti",
     description="Aradığın bilgiye ulaştığında, işlemi tamamladığında veya sohbeti bitirdiğinde döngüden çıkmak için KESİNLİKLE bunu çağır.",
-    params={"ozet": ("string", "Patrona verilecek nihai cevap veya özet")},
+    params={
+        "ozet": ("string", "Patrona UI ekranında verilecek samimi, net ve doğrudan nihai cevap."),
+        "hafiza_notu": ("string", "Hafızaya (SQL + RAG) kaydedilecek teknik özet: Ne yapıldı, hangi dosyalara neden dokunuldu, alınan mimari veya kural kararları."),
+    },
+    required=["ozet"],
 )(None)
 
 ghost_tool(
