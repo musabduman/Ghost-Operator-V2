@@ -1,9 +1,18 @@
 from core.config import GHOST_TOKEN
+from core.ollama_health import (
+    ensure_ollama,
+    format_embedding_error,
+    OLLAMA_BASE_URL,
+    EMBEDDING_MODEL,
+)
 import ast
 import os
 import requests
 import chromadb
+import logging
 from hafıza.symbol_graph import get_symbol_graph, SymbolGraph
+
+logger = logging.getLogger("ghost.proje_kod_bellek")
 
 
 class ProjeKodBellek:
@@ -20,12 +29,17 @@ class ProjeKodBellek:
         db_path = os.path.join(DB_DIR, "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name=collection_name)
-        self.api_url = "http://localhost:11434/api/embeddings"
+        self.api_url = f"{OLLAMA_BASE_URL}/api/embeddings"
         # B) Yapısal bellek (SQLite call/import/inheritance graph)
         self.graph: SymbolGraph = get_symbol_graph()
+        self.son_hata: str | None = None
 
     def _get_embedding(self, metin):
-        payload = {"model": "qwen3-embedding:0.6b", "prompt": metin}
+        health_err = ensure_ollama()
+        if health_err:
+            raise ConnectionError(health_err)
+
+        payload = {"model": EMBEDDING_MODEL, "prompt": metin}
         response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=120)
         response.raise_for_status()
         return response.json()["embedding"]
@@ -136,6 +150,13 @@ class ProjeKodBellek:
 
         metin_parts = []
 
+        if self.son_hata:
+            # LangGraph / Coder için temiz tek satırlık uyarı — çöp traceback basılmaz
+            metin_parts.append(
+                f"[PROJE HAFIZASI UYARISI: {self.son_hata}. "
+                f"Kodlama mevcut sembol taraması olmadan genel bağlamla yürütülüyor.]\n"
+            )
+
         if alakalilar:
             metin = "[PROJEDE MEVCUT İLGİLİ SEMBOLLER — bunları tekrar icat etme, gerekiyorsa çağır/kullan]\n"
             for s in alakalilar:
@@ -155,7 +176,7 @@ class ProjeKodBellek:
                 if graph_text:
                     metin_parts.append(graph_text)
             except Exception as e:
-                print(f"[SYMBOL GRAPH UYARISI] Bağlam çekme hatası: {e}")
+                logger.warning(f"[SYMBOL GRAPH UYARISI] Bağlam çekme hatası: {e}")
 
         return "\n".join(metin_parts)
 
@@ -175,6 +196,7 @@ class ProjeKodBellek:
                 where=where,
                 include=["documents", "metadatas", "distances"],
             )
+            self.son_hata = None
             bulunanlar = []
             if results["documents"] and results["documents"][0]:
                 for i in range(len(results["documents"][0])):
@@ -185,7 +207,8 @@ class ProjeKodBellek:
                     })
             return bulunanlar
         except Exception as e:
-            print(f"[PROJE BELLEK UYARISI] Sembol arama başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[PROJE BELLEK] Sembol arama başarısız: {self.son_hata}")
             return []
 
     def projeyi_tara(self, kok_dizin: str, proje_adi: str):

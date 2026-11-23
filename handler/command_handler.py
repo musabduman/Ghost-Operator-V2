@@ -538,6 +538,17 @@ class CommandHandler:
         proje_adi = son_proje["proje_adi"] if son_proje else None
         
         memories = self.bellek.sorgula(soru=user_input, limit=2, proje_adi=proje_adi)
+
+        # Eğer bellek sorgusunda bir hata oluştuysa (ör. Ollama kapalı veya model yok)
+        # LangGraph'a temiz, tek satırlık bir sistem uyarısı geçiyoruz (çöplük/traceback olmadan).
+        if getattr(self.bellek, "son_hata", None):
+            hata_mesaji = self.bellek.son_hata
+            return (
+                f"[SİSTEM UYARISI (Vektör Hafıza): {hata_mesaji}. "
+                f"Bu görev geçmiş bellek bilgisi olmadan yürütülüyor.]\n"
+                f"Kullanıcı Komutu: {user_input}"
+            )
+
         if not memories:
             return user_input
             

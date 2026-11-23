@@ -1,38 +1,76 @@
 from core.config import GHOST_TOKEN
+from core.ollama_health import (
+    ensure_ollama,
+    format_embedding_error,
+    OLLAMA_BASE_URL,
+    EMBEDDING_MODEL,
+)
 import chromadb
 import requests
 import os
 import hashlib
+import logging
+
+logger = logging.getLogger("ghost.rag_hafiza")
+
 
 class Bellek:
+    """ChromaDB destekli vektör hafıza.
+
+    Ollama embedding servisi erişilemez durumdaysa önce otomatik başlatmayı
+    dener; başarısızsa hataları LangGraph'a aktarılabilecek temiz mesajlara
+    çevirir (State Hijyeni — ham traceback veya HTML çöplüğü dışarı sızmaz).
+    """
+
     def __init__(self, collection_name="bellek"):
         from core.config import DB_DIR, GHOST_TOKEN
         db_path = os.path.join(DB_DIR, "VektorDB")
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection_name = collection_name
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
-        
-        self.api_url = "http://localhost:11434/api/embeddings"
+
+        self.api_url = f"{OLLAMA_BASE_URL}/api/embeddings"
+
+        # Son hata — LangGraph veya command_handler tarafından okunabilir
+        self.son_hata: str | None = None
+
+    # ── Embedding ────────────────────────────────────────────────────────
 
     def _get_embedding(self, metin):
-        # YENİ MODEL BURADA DEVREYE GİRİYOR
+        """Ollama'dan embedding vektörü alır.
+
+        Servis kapalıysa otomatik başlatmayı dener.  Başarısızsa
+        ``format_embedding_error`` ile temiz hata üretir ve fırlatır.
+        """
+        # Önce Ollama erişilebilir mi kontrol et / otomatik başlat
+        health_err = ensure_ollama()
+        if health_err:
+            raise ConnectionError(health_err)
+
         payload = {
-            "model": "qwen3-embedding:0.6b", 
+            "model": EMBEDDING_MODEL,
             "prompt": metin
         }
         # Ana model meşgulken hata vermemesi için 120 saniye sabır!
-        response = requests.post(self.api_url, json=payload, headers={"X-Ghost-Token": GHOST_TOKEN}, timeout=120)
+        response = requests.post(
+            self.api_url,
+            json=payload,
+            headers={"X-Ghost-Token": GHOST_TOKEN},
+            timeout=120,
+        )
         response.raise_for_status()
         return response.json()["embedding"]
 
+    # ── Yazma ────────────────────────────────────────────────────────────
+
     def bellege_yaz(self, metin, metadata=None):
         if not metin or not metin.strip():
-            return 
-            
+            return
+
         try:
             embedding = self._get_embedding(metin)
             metin_hash = hashlib.md5(metin.encode("utf-8")).hexdigest()
-            
+
             kwargs = {
                 "documents": [metin],
                 "embeddings": [embedding],
@@ -40,12 +78,24 @@ class Bellek:
             }
             if metadata is not None:
                 kwargs["metadatas"] = [metadata]
-                
+
             self.collection.upsert(**kwargs)
+            self.son_hata = None
         except Exception as e:
-            print(f"[SİSTEM UYARISI] Belleğe yazma başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[RAG] Belleğe yazma başarısız: {self.son_hata}")
+
+    # ── Sorgulama ────────────────────────────────────────────────────────
 
     def sorgula(self, soru, limit=3, proje_adi=None):
+        """Vektör belleğini sorgular.
+
+        Returns:
+            list[str] — bulunan dokümanlar (boş liste olabilir).
+
+        Hata durumunda ``self.son_hata`` doldurulur; çağıran taraf bu
+        değeri okuyarak LangGraph'a temiz uyarı geçebilir.
+        """
         try:
             embedding = self._get_embedding(soru)
             where = {"proje_adi": proje_adi} if proje_adi else None
@@ -54,12 +104,14 @@ class Bellek:
                 n_results=limit,
                 where=where
             )
+            self.son_hata = None
             if results["documents"] and results["documents"][0]:
-                return results["documents"][0] 
+                return results["documents"][0]
             return []
-        
+
         except Exception as e:
-            print(f"[SİSTEM UYARISI] Bellek sorgusu başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[RAG] Bellek sorgusu başarısız: {self.son_hata}")
             return []
 
     def sorgula_metadata_ile(self, soru, limit=3):
@@ -81,7 +133,8 @@ class Bellek:
                     })
             return kayitlar
         except Exception as e:
-            print(f"[SİSTEM UYARISI] Metadata ile bellek sorgusu başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[RAG] Metadata ile bellek sorgusu başarısız: {self.son_hata}")
             return []
 
     def benzerini_bul(self, metin, esik=0.15):
@@ -99,6 +152,7 @@ class Bellek:
                 n_results=1,
                 include=["documents", "distances"],
             )
+            self.son_hata = None
             if not results["documents"] or not results["documents"][0]:
                 return None
             en_yakin_mesafe = results["distances"][0][0]
@@ -106,7 +160,8 @@ class Bellek:
                 return results["documents"][0][0]
             return None
         except Exception as e:
-            print(f"[SİSTEM UYARISI] Benzerlik kontrolü başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[RAG] Benzerlik kontrolü başarısız: {self.son_hata}")
             return None
 
     def benzerini_bul_metadata_ile(self, metin, esik=0.15, proje_adi=None):
@@ -122,6 +177,7 @@ class Bellek:
                 include=["documents", "metadatas", "distances"],
                 where=where
             )
+            self.son_hata = None
             if not results["documents"] or not results["documents"][0]:
                 return None
             en_yakin_mesafe = results["distances"][0][0]
@@ -134,7 +190,8 @@ class Bellek:
                 }
             return None
         except Exception as e:
-            print(f"[SİSTEM UYARISI] Metadata'lı benzerlik kontrolü başarısız: {e}")
+            self.son_hata = format_embedding_error(e)
+            logger.warning(f"[RAG] Metadata'lı benzerlik kontrolü başarısız: {self.son_hata}")
             return None
 
     def bellekten_sil(self, metin):
