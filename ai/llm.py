@@ -18,7 +18,7 @@ logger = logging.getLogger("ghost.llm")
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(env_path)
 
-from core.config import GHOST_TOKEN
+from core.config import GHOST_TOKEN, USER_DESKTOP_DIR
 
 # 1. ORTAK BİLİNÇ (State)
 class GhostState(TypedDict):
@@ -84,7 +84,7 @@ class ChatLLM(BaseLLM):
 
         [DOSYA YOLU KURALI — ÇİĞNENEMEZ]
         dosya_yaz, dosya_oku, kodu_calistir çağırırken `yol` parametresi MUTLAKA TAM/MUTLAK YOL olmalıdır.
-        - DOĞRU  : "C:\\Users\\dum4n\\Desktop\\ProjemAdi\\index.html"
+        - DOĞRU  : {repr(os.path.join(USER_DESKTOP_DIR, "ProjemAdi", "index.html"))}
         - YANLIŞ : "index.html"  veya  "src/js/main.js"  veya  "ProjemAdi/index.html"
         Proje klasörünü en başta klasor_yap ile oluşturup o tam yolu tut; her dosya yazışında o yola ekle.
         Kullanıcı adını tahmin etme — Desktop yolu için durum_getir veya klasor_incele ile gerçek yolu bul.
@@ -122,7 +122,7 @@ class ChatLLM(BaseLLM):
         Patron senden çok dosyalı bir proje (web sitesi, uygulama vb.) oluşturmanı istediğinde şu sırayı uygula:
         1. ÖNCE PLAN: uzun_gorev_plani_yap ile proje adını, klasör yapısını ve yazılacak dosyaların sırasını belirle. Planı Patron'a onaylatmadan başlama.
         2. KÖK DİZİNİ BELİRLE: İlk adım MUTLAKA klasor_yap ile tam mutlak yolu olan proje klasörünü oluşturmak olmalı. Bu yolu tum adımlarda kullan.
-        3. SIRAYLA YAZ: Her dosyayı sırayla kod_iste ile yazdır. `yol` parametresine her zaman mutlak yol ver (örn: C:\\Users\\dum4n\\Desktop\\ProjemAdi\\index.html). Bir önceki dosyanın observation'ı gelmeden çık sonrakine geçme.
+        3. SIRAYLA YAZ: Her dosyayı sırayla kod_iste ile yazdır. `yol` parametresine her zaman mutlak yol ver (örn: {os.path.join(USER_DESKTOP_DIR, "ProjemAdi", "index.html")}). Bir önceki dosyanın observation'ı gelmeden çık sonrakine geçme.
         4. YOL DOĞRULAMA: Her dosya_yaz sonrasında dönen mesajdaki gerçek yolu kontrol et. Beklediğin yoldan farklıysa hemen düzelt.
         5. BAĞIMLILIKLAR: Eğer proje Node.js ise dosyaları yazdıktan sonra kodu_calistir ile 'cd <proje_yolu> && npm install' komutunu çalıştır. Python projesinde pip install gerektiriyorsa aynısını yap.
         6. BİTİŞTE AÇIK: Projeyi bitirince kodu_calistir ile projeyi başlat (node server.js, python app.py vb.) veya index.html gibi statik siteyse uygulama_ac ile tarayıcıda aç.

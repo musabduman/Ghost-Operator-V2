@@ -1,5 +1,5 @@
 @echo off
-:: Projenin olduğu klasöre git
-cd /d "C:\Users\dum4n\Desktop\vs.code\asistan"
-start pythonw dinleyici.pyw
+:: Projenin oldugu klasore dinamik git
+cd /d "%~dp0.."
+start pythonw uyandırma\dinleyici.pyw
 exit

@@ -1,8 +1,14 @@
 import os
+from pathlib import Path
+
+# Kullanıcı ve Sistem Yolları (Varsayılan Path.home() / Masaüstü)
+USER_HOME_DIR = os.getenv("GHOST_USER_HOME", str(Path.home()))
+USER_DESKTOP_DIR = os.getenv("GHOST_USER_DESKTOP", str(Path(USER_HOME_DIR) / "Desktop"))
+DEFAULT_PROJECTS_DIR = os.getenv("GHOST_PROJECTS_DIR", USER_DESKTOP_DIR)
 
 # Docker'a geçtiğimizde bunu environment variable olarak vereceğiz (Örn: /app/data)
 # Şimdilik masaüstünde çalıştığı için kullanıcı dizininde sabit bir klasör seçiyoruz.
-GHOST_DATA_DIR = os.getenv("GHOST_DATA_DIR", os.path.join(os.path.expanduser("~"), "Ghost_Data"))
+GHOST_DATA_DIR = os.getenv("GHOST_DATA_DIR", os.path.join(USER_HOME_DIR, "Ghost_Data"))
 
 # Docker'a geçildiğinde True yapılacak ve HTTP üzerinden masaüstü servisine bağlanılacak
 USE_LOCAL_BRIDGE = os.getenv("USE_LOCAL_BRIDGE", "False").lower() == "true"

@@ -29,6 +29,7 @@ from core.fs import (
     akilli_yol_cozucu, derin_arama, kodu_calistir
 )
 from core.tool_registry import TOOL_EKRAN_GORUNTUSU, TOOL_WHATSAPP_EKRANI_OKU
+from core.config import USER_DESKTOP_DIR
  
 
 SESLI_MOD_GECIS = ["sesli moda geç", "orb moduna geç", "arayüzü küçült", "küçük ekrana geç", "kompakt mod"]
@@ -633,9 +634,10 @@ class CommandHandler:
             for a in adimlar
         )
         if not klasor_adimi_var:
+            ornek_konum = os.path.join(USER_DESKTOP_DIR, hedef.split()[0])
             kok_dizin_adimi = (
                 f"klasor_yap ile '{hedef.split()[0]}' proje ana klasörünü tam mutlak yoluyla oluştur "
-                f"(Desktop veya uygun bir konuma, örn: C:\\Users\\dum4n\\Desktop\\{hedef.split()[0]})"
+                f"(Desktop veya uygun bir konuma, örn: {ornek_konum})"
             )
             adimlar = [kok_dizin_adimi] + list(adimlar)
             self.app.log("SİSTEM: Plan'a otomatik 'klasor_yap' adımı enjekte edildi.", "yellow")
