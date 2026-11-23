@@ -1009,7 +1009,7 @@ class CommandHandler:
                 else:
                     os.startfile(app)
             else:
-                os.system(f"start {isim}")
+                subprocess.Popen(["cmd.exe", "/c", "start", "", isim])
                 
         elif sys.platform.startswith("linux"):
             SPECIAL = {
@@ -1018,7 +1018,7 @@ class CommandHandler:
                 "whatsapp": "whatsapp-for-linux"
             }
             komut = SPECIAL.get(isim, isim)
-            os.system(f"nohup {komut} >/dev/null 2>&1 &")
+            subprocess.Popen([komut], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             
         return f"'{isim}' uygulaması başlatıldı komutu verildi."
 

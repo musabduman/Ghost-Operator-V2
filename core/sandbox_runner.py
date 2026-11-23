@@ -16,6 +16,8 @@ GÜVENLIK NOTU:
   kayıt edilince o Python sürecinde kaldırılamaz. Bu yüzden sandbox
   her zaman AYRI BİR SUBPROCESS içinde çalıştırılır. Ana Ghost
   sürecine dokunulmaz.
+  UYARI: Bu mekanizma OS-level tam bir izolasyon/sandbox sağlamaz;
+  yalnızca denetim ve risk azaltıcı bir kısıtlama katmanıdır.
 """
 from __future__ import annotations
 
@@ -62,19 +64,20 @@ def _build_bootstrap(
     """
     # Güvenli JSON serialize
     params_json = json.dumps(params, ensure_ascii=False)
-    workspace_json = json.dumps(workspace, ensure_ascii=False)
+    workspace_repr = repr(os.path.abspath(workspace))
     allow_network_py = "True" if allow_network else "False"
 
     bootstrap = textwrap.dedent(f"""
 import sys, os, json, importlib.util, pathlib, traceback
 
-# ── Audit Hook (Güvenlik Katmanı) ─────────────────────────────────────────────
-_WORKSPACE = pathlib.Path({workspace_json!r}).resolve()
+# ── Audit Hook (Risk Azaltıcı Kısıtlama Katmanı) ──────────────────────────────
+_WORKSPACE = pathlib.Path({workspace_repr}).resolve()
 _ALLOW_NETWORK = {allow_network_py}
-_ALLOWED_PREFIXES = [
-    str(_WORKSPACE),
-    sys.prefix,                      # Python stdlib ve site-packages
-    os.path.dirname(sys.executable), # Python interpreter dizini
+_ALLOWED_DIRS = [
+    _WORKSPACE,
+    pathlib.Path(sys.prefix).resolve(),
+    pathlib.Path(getattr(sys, "base_prefix", sys.prefix)).resolve(),
+    pathlib.Path(sys.executable).parent.resolve(),
 ]
 
 def _ghost_audit_hook(event, args):
@@ -86,12 +89,12 @@ def _ghost_audit_hook(event, args):
                 return
             # Symlink + relative path saldırılarını önle
             try:
-                resolved = str(pathlib.Path(raw_path).resolve())
+                resolved_path = pathlib.Path(raw_path).resolve()
             except Exception:
-                resolved = os.path.abspath(raw_path)
+                resolved_path = pathlib.Path(os.path.abspath(raw_path))
 
-            # Workspace dışı ve sistem dizinleri dışı erişimi engelle
-            allowed = any(resolved.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
+            # Workspace dışı ve sistem dizinleri dışı erişimi engelle (Path.is_relative_to)
+            allowed = any(resolved_path.is_relative_to(allowed_dir) for allowed_dir in _ALLOWED_DIRS)
             if not allowed:
                 raise PermissionError(
                     f"[SANDBOX] Dosya erişimi reddedildi: '{{raw_path}}' "

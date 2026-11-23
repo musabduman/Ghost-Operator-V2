@@ -11,8 +11,8 @@ client = TestClient(app)
 client.headers.update({"X-Ghost-Token": GHOST_TOKEN})
 
 def test_check_permission_default():
-    # Mevcut bir permissions.json yoksa veya hatalıysa, varsayılan olarak True dönmeli
-    assert check_permission("herhangi_bir_arac") == True
+    # Fail-closed: permissions.json yoksa veya araç listede yoksa False dönmeli
+    assert check_permission("herhangi_bir_arac") == False
 
 def test_execute_tool_unauthorized(tmp_path, monkeypatch):
     # Geçici bir permissions.json oluşturup, belirli bir aracı yasaklayalım
@@ -30,8 +30,16 @@ def test_execute_tool_unauthorized(tmp_path, monkeypatch):
     assert data["basarili"] == False
     assert "GÜVENLİK ENGELİ" in data["mesaj"]
 
-def test_execute_tool_authorized_but_unknown():
+def test_execute_tool_authorized_but_unknown(monkeypatch):
     # İzni olan ama sistemde tanımlı olmayan bir araç (404 vermeli)
+    monkeypatch.setattr("local_bridge.main.check_permission", lambda tool: True)
     response = client.post("/execute", json={"tool_adi": "olmayan_arac", "parametreler": {}})
     assert response.status_code == 404
     assert "Bilinmeyen masaüstü aracı" in response.json()["detail"]
+
+def test_verify_token_hmac():
+    # Geçersiz token ile 403 alınmalı
+    bad_client = TestClient(app)
+    bad_client.headers.update({"X-Ghost-Token": "hatali_token_12345"})
+    res = bad_client.post("/execute", json={"tool_adi": "ekran_goruntusu", "parametreler": {}})
+    assert res.status_code == 403

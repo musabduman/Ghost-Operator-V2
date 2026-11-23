@@ -1,8 +1,8 @@
 {
-    "ekran_goruntusu": true,
-    "whatsapp_mesaj_gonder": true,
-    "whatsapp_ekrani_oku": true,
-    "browser_search": true,
-    "kodu_calistir": true,
-    "uygulama_ac": true
+    "ekran_goruntusu": false,
+    "whatsapp_mesaj_gonder": false,
+    "whatsapp_ekrani_oku": false,
+    "browser_search": false,
+    "kodu_calistir": false,
+    "uygulama_ac": false
 }

@@ -22,12 +22,13 @@ from core.tool_registry import (
 )
 import PIL.ImageGrab
 import base64
+import hmac
 from core.config import GHOST_TOKEN
 
 app = FastAPI(title="Ghost Local Bridge API", description="Docker'daki Ghost Core ile Host makine arasındaki masaüstü köprüsü")
 
 async def verify_token(x_ghost_token: str = Header(None)):
-    if not x_ghost_token or x_ghost_token != GHOST_TOKEN:
+    if not x_ghost_token or not GHOST_TOKEN or not hmac.compare_digest(str(x_ghost_token), str(GHOST_TOKEN)):
         raise HTTPException(status_code=403, detail="Geçersiz veya eksik Ghost Token (Güvenlik İhlali)")
     return x_ghost_token
 
@@ -44,14 +45,14 @@ class DiffRequest(BaseModel):
 def check_permission(tool_name: str) -> bool:
     perm_file = os.path.join(base_dir, "local_bridge", "permissions.json")
     if not os.path.exists(perm_file):
-        return True # Varsayılan olarak izin ver
+        return False  # Fail-closed: İzin dosyası yoksa reddet
     try:
         import json
         with open(perm_file, "r", encoding="utf-8") as f:
             perms = json.load(f)
-        return perms.get(tool_name, True)
-    except:
-        return True
+        return bool(perms.get(tool_name, False))
+    except Exception:
+        return False  # Fail-closed: Hata veya bozuk dosya durumunda reddet
 
 @app.post("/execute", dependencies=[Depends(verify_token)])
 def execute_tool(req: ToolRequest):
@@ -102,8 +103,8 @@ def execute_tool(req: ToolRequest):
             uygulama_yolu = params.get("yol")
             if not os.path.exists(uygulama_yolu):
                 return {"basarili": False, "mesaj": "Uygulama bulunamadı"}
-            # Windows'ta arkaplanda aç
-            subprocess.Popen([uygulama_yolu], shell=True)
+            # Windows'ta arkaplanda aç (shell=True kaldırıldı, güvenli subprocess)
+            subprocess.Popen([uygulama_yolu])
             return {"basarili": True, "mesaj": f"{uygulama_yolu} açıldı."}
 
         else:

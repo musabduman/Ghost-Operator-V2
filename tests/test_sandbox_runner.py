@@ -85,7 +85,7 @@ def test_path_traversal_blocked(workspace, tmp_path):
     )
     # Sandbox izin vermemeli
     assert not result["basarili"], "Path traversal engellenmeliydi"
-    error_text = result.get("hata", "") + result.get("sonuc", "")
+    error_text = str(result.get("hata") or "") + str(result.get("sonuc") or "")
     assert "reddedildi" in error_text.lower() or "permission" in error_text.lower() or "no such" in error_text.lower()
 
 

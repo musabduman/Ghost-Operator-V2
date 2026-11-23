@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import threading
 import sys
 import os
+import hmac
 import core.config
 core.config.USE_DOCKER_CORE = False  # SUNUCU KENDİ KENDİNE PROXY YAPMAMALIDIR!
 
@@ -13,7 +14,7 @@ from core.config import GHOST_TOKEN
 app = FastAPI(title="Ghost Core Server")
 
 async def verify_token(x_ghost_token: str = Header(None)):
-    if not x_ghost_token or x_ghost_token != GHOST_TOKEN:
+    if not x_ghost_token or not GHOST_TOKEN or not hmac.compare_digest(str(x_ghost_token), str(GHOST_TOKEN)):
         raise HTTPException(status_code=403, detail="Geçersiz veya eksik Ghost Token (Güvenlik İhlali)")
     return x_ghost_token
 

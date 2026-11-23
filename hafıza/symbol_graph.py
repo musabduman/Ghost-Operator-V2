@@ -342,7 +342,7 @@ class SymbolGraph:
         if not ctx["nodes"]:
             return ""
 
-        lines = ["[YAPISAN SEMBOL GRAFİĞİ — Çağrı ve Bağımlılık İlişkileri]"]
+        lines = ["[YAPISAL SEMBOL GRAFİĞİ — Çağrı ve Bağımlılık İlişkileri]"]
         for n in ctx["nodes"]:
             loc = f"{os.path.basename(n['file_path'])}:{n['line_number']}"
             cls = f" [{n['class_name']}]" if n.get("class_name") else ""

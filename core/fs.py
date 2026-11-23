@@ -110,11 +110,49 @@ def dosya_bul(dosya_yolu: str, aktif_proje_dizini: str = None) -> str:
     return dosya_yolu
 
 
-def kodu_calistir(path: str) -> dict:
-    """Python dosyasını çalıştırır; sonucu dict olarak döndürür."""
+def kodu_calistir(path: str, aktif_proje_dizini: str = None) -> dict:
+    """
+    Python dosyasını çalıştırır; sonucu dict olarak döndürür.
+    Güvenlik kısıtlaması: Kod dosyası izin verilen çalışma dizini (aktif proje veya
+    kullanıcı Desktop/Documents/Ghost çalışma alanı) içinde olmalıdır.
+    """
     try:
+        from pathlib import Path
+        file_path = Path(path).resolve()
+
+        if not file_path.exists() or not file_path.is_file():
+            return {"basarili": False, "cikti": None, "hata": f"Dosya bulunamadı: {path}"}
+
+        # İzin verilen kök dizinler
+        allowed_roots = []
+        if aktif_proje_dizini:
+            allowed_roots.append(Path(aktif_proje_dizini).resolve())
+
+        from core.config import GHOST_DATA_DIR, TEMP_DIR
+        user_home = Path.home()
+        allowed_roots.extend([
+            user_home / "Desktop",
+            user_home / "Documents",
+            Path(GHOST_DATA_DIR).resolve(),
+            Path(TEMP_DIR).resolve(),
+            Path.cwd().resolve(),
+        ])
+
+        # Dosyanın izin verilen köklerden en az birinin altında olduğunu doğrula
+        is_allowed = any(
+            file_path.is_relative_to(root)
+            for root in allowed_roots
+            if root.exists()
+        )
+        if not is_allowed:
+            return {
+                "basarili": False,
+                "cikti": None,
+                "hata": f"GÜVENLİK KISITLAMASI: '{path}' izin verilen çalışma dizinlerinin dışında. Çalıştırma reddedildi.",
+            }
+
         result = subprocess.run(
-            [sys.executable, path],
+            [sys.executable, str(file_path)],
             capture_output=True,
             text=True,
             timeout=15,
