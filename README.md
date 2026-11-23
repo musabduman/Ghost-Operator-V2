@@ -1,113 +1,181 @@
-# ENGLİSH 
+# Ghost Operator (v2)
 
-# Ghost
+**Ghost Operator** is an autonomous, local-first AI assistant built on LangGraph, engineered to manage workflows, write and run code, interact with operating system environments, and automate desktop actions through a decoupled architecture consisting of a persistent Core brain, an opt-in Host Bridge, and modern user clients.
 
-Ghost (a.k.a. Ghost Operator) is a personal, local-first AI assistant built on LangGraph. It is the primary, ongoing development focus of the project — an agent that runs on your own machine, keeps its own memory, and can act on your behalf across voice, chat, and (eventually) other tools like Spotify.
+---
 
-## Architecture
+## Architecture Overview
 
-- **Supervisor / worker graph** — built on LangGraph's `StateGraph`, with a supervisor node that routes tasks to specialized worker nodes via conditional edges.
-- **Critic node** — after a task is marked complete (`GOREV_BITTI`), a self-critique step re-checks whether the task was actually done correctly using the same supervisor model (no tools). If not, it injects a correction message and routes back to the supervisor instead of trusting completion blindly.
-- **Tool registry** — a single source of truth (`core/tool_registry.py`) for tool schemas, replacing older manually duplicated tool/arg-map lists.
-- **Compact memory** — after each graph run, a one-line summary of tool activity is appended to a lightweight running log.
+Ghost decouples heavy cognitive graph loops and state management from desktop-bound OS operations.
 
-## Memory pipeline
+```mermaid
+flowchart TD
+    subgraph Clients["Clients & Interfaces"]
+        UI["React + Vite Frontend (Port 5173)"]
+        TG["Telegram Bot"]
+    end
 
-Ghost separates raw activity from durable knowledge:
+    subgraph Core["Ghost Core Engine (Port 8001)"]
+        CS["Core Server (FastAPI)"]
+        LG["LangGraph Brain (Supervisor & Critic)"]
+        MEM["Memory Layer (EpisodicDB, Vector Store, Symbol Graph)"]
+        REG["Central Tool Registry (core/tool_registry.py)"]
+        
+        CS --> LG
+        LG --> MEM
+        LG --> REG
+    end
 
-1. **EpisodicDB** — a raw buffer of chat/tool logs, each row flagged `is_analyzed`.
-2. **LibrarianAgent** — a background thread (runs every ~30s) that sends unanalyzed rows to an LLM, which extracts durable facts and proposes save/update actions.
-3. **Bellek (RAG vector store)** — where extracted facts land, with confidence scoring: each fact gets a confidence score (0–1) and a `confirmation_count` that increases on repeated confirmation. A proposed update that contradicts a fact is rejected if the existing fact is well-confirmed (`confirmation_count >= 3`) and the new claim has low confidence (`< 0.8`).
-4. **CommandHandler** — the tool dispatcher (file read/write, folder inspection, code execution, etc.), currently stateless between calls.
-5. **Project L2 Memory** — A structured, file-based memory (`.ghost/project_memory.json`) that travels with each project's repository. It stores static architectural rules, decisions, constraints, and known errors, which are injected directly into the system prompt when the agent works on that project.
+    subgraph Host["Host Machine / Desktop Environment"]
+        LB["Local Bridge API (Port 8000)"]
+        PERM["Permissions Gate (permissions.json - Fail-Closed)"]
+        TOOLS["Desktop Tools (Vision Screenshot, WhatsApp, Subprocess)"]
+        
+        LB --> PERM
+        PERM --> TOOLS
+    end
 
-A planned addition is a **"durum hafızası"** (working/state memory) layer — tracking the active project, open files, and in-progress task when switching between projects, separate from long-term RAG memory.
+    UI -->|"HTTP / REST (X-Ghost-Token)"| CS
+    TG -->|"HTTP / REST (X-Ghost-Token)"| CS
+    LG -->|"USE_LOCAL_BRIDGE=True (POST /execute)"| LB
+```
 
-## Voice / UI
+### Component Roles
 
-- Custom desktop UI built with **CustomTkinter**.
-- A PIL-based animated orb, rebuilt with Pillow supersampling for smooth anti-aliased rendering.
-- Vosk-based voice activity detection for speech recognition (earlier milestone).
+1. **Ghost Core Server (`core_server.py` — Port 8001):**
+   - Hosts the LangGraph supervisor/critic execution graph.
+   - Manages episodic memory buffers, AST symbol dependency graphs, and durable knowledge.
+   - Can run either locally or isolated inside a Docker container.
+2. **Local Bridge (`local_bridge/main.py` — Port 8000):**
+   - Runs directly on the host machine.
+   - Exposes hardware- and desktop-bound tools (screen capture, local browser sessions, application launching) to the Core server over HTTP.
+   - Enforces a fail-closed permission model.
+3. **Frontend (`frontend/` — Port 5173):**
+   - Modern React + Vite desktop workspace UI with real-time terminal output, chat interface, memory inspection, and settings panel.
+4. **Telegram Adapter:**
+   - Enables remote messaging and notifications, routing messages to the central Core server.
 
-## Notable fixes and milestones
+---
 
-- Migrated from a custom agentic loop to LangGraph/StateGraph.
-- Integrated ChromaDB-based RAG memory (with `nomic-embed` in an earlier iteration).
-- Removed `planner.py` from the active loop (kept, unused) after finding it added a synchronous LLM call before every command, even trivial ones — a major performance win.
-- Fixed infinite tool-call loops caused by the supervisor reading stale message history.
-- Fixed a `GOREV_BITTI` tag-stripping bug that silently dropped responses.
-- Fixed a "format imitation" bug where accumulated Spotify success strings in context taught the model to fake tool calls instead of making them.
-- Built a Spotify integration with proper device wakeup handling.
-- Refactored from a single monolithic file into a modular structure (`ui/`, `handlers/`, `core/`, `ai/`, etc.).
-- Currently resolving a **format drift bug**: the model imitates natural-language patterns from prior conversation instead of maintaining structured routing tags.
+## Security Model
 
-## Roadmap
+Ghost operates with defense-in-depth principles:
 
-- **Digital twin repositioning** — evolving Ghost from an assistant into an agent that can handle personal tasks on the user's behalf (reviewing notes, filling out scholarship applications, accessing documents).
-- **Dual-memory architecture** — splitting memory into:
-  - *General memory*: existing EpisodicDB/SQLite + LibrarianAgent + vector DB, for chat and daily tasks.
-  - *Project memory* (new): `ProjeKodBellek`/ChromaDB + an AST-based symbol map (JSON) + code search tools, for coding/project-specific tasks — with the supervisor routing between the two and a light SQL-level link so general memory can still reference recent project context without duplicating code-level detail.
-- **Portable project detection** — moving from hardcoded folder-name heuristics to an "ask once, then remember" path-to-name mapping, so the approach stays usable if Ghost becomes a product for other users (all local projects currently live under a fixed path on the developer's machine).
-- **Human-in-the-loop confirmation** — having Ghost ask a clarifying question when context is missing (e.g., before acting on unseen code) rather than assuming.
-- **Core/frontend split** — splitting Ghost into a persistent core backend (LangGraph brain, memory, tool dispatch) with thin frontend adapters (desktop UI, Telegram bot) sharing one central session store, so switching UIs shows the same conversation. Considering hosting the core remotely (Render/Docker) with a local-agent bridge process for machine-bound tools (screen capture, local Ollama, local files, WhatsApp browser session).
+* **Token Authentication (`X-Ghost-Token`):**
+  - All communication between clients, the Core server, and the Local Bridge requires a secret token.
+  - Constant-time verification is enforced using `hmac.compare_digest` to prevent timing attacks.
+* **Fail-Closed Permission Gate (`permissions.json`):**
+  - The Local Bridge requires explicit user consent for each desktop tool (`ekran_goruntusu`, `whatsapp_mesaj_gonder`, `kodu_calistir`, etc.).
+  - Default policy is **fail-closed**: if the configuration file is missing, corrupt, or an action is unspecified, access is denied (`False`).
+* **Safe Subprocess Execution:**
+  - Application launchers and command dispatchers use structured list arguments (`subprocess.Popen([arg1, ...])`) without shell interpolation (`shell=False`), preventing command injection.
+  - `kodu_calistir` enforces directory restrictions, denying execution requests outside approved workspace/project boundaries.
+* **Audit-Hook Execution Guard:**
+  - Generated Python skills run with `sys.addaudithook` to constrain filesystem access via `Path.is_relative_to` checks against authorized directories.
 
-## Status
+> [!WARNING]
+> **What This Is NOT:**  
+> The Python audit-hook runner is a **risk-reduction constraint layer**, NOT a secure hypervisor or full operating-system sandbox. It reduces the surface of accidental or unauthorized path escapes, but does not provide complete kernel-level isolation. Untrusted code should always be treated with appropriate caution.
 
-Under active development since before early 2026. Performance improved significantly after removing planner/queue overhead from the main loop.
+---
 
-# TÜRKCE
+## Getting Started
 
-# Ghost
+### Prerequisites
+* Python 3.11+
+* Node.js 18+ (for frontend)
+* Docker & Docker Compose (optional, for containerized Core)
 
-Ghost (diğer adıyla Ghost Operator), LangGraph üzerine kurulu, yerel öncelikli (local-first) kişisel bir AI asistanı. Projenin ana geliştirme odağı — kendi bilgisayarında çalışan, kendi hafızasını tutan, sesli/yazılı arayüzler ve (ileride) Spotify gibi araçlar üzerinden kullanıcı adına işlem yapabilen bir ajan.
+### 1. Local Environment Setup
 
-## Mimari
+Clone the repository and install dependencies:
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
 
-- **Supervisor / worker graph** — LangGraph'ın `StateGraph` yapısı üzerine kurulu; supervisor node, koşullu kenarlar (conditional edges) üzerinden görevleri özel worker node'lara yönlendiriyor.
-- **Critic node** — bir görev `GOREV_BITTI` ile tamamlandı işaretlendikten sonra, aynı supervisor modelini (araçsız) kullanan bir öz-eleştiri adımı görevin gerçekten doğru yapılıp yapılmadığını kontrol ediyor. Değilse, düzeltme mesajı enjekte edip supervisor'a geri yönlendiriyor — tamamlanma bilgisine körü körüne güvenmek yerine.
-- **Tool registry** — araç şemaları için tek doğruluk kaynağı (`core/tool_registry.py`), eskiden elle tekrarlanan TOOLS/TOOL_ARG_MAP listelerinin yerini aldı.
-- **Kompakt hafıza** — her graph çalışmasından sonra, araç aktivitesinin tek satırlık özeti hafif bir log'a ekleniyor.
+# Install frontend dependencies
+cd frontend
+npm install
+cd ..
+```
 
-## Hafıza pipeline'ı
+Configure your environment:
+```bash
+cp .env.example .env  # Or update your .env with your API keys
+```
 
-Ghost, ham aktiviteyi kalıcı bilgiden ayırıyor:
+### 2. Running Locally
 
-1. **EpisodicDB** — her satırı `is_analyzed` bayraklı, ham sohbet/araç log'u tamponu.
-2. **LibrarianAgent** — yaklaşık 30 saniyede bir çalışan bir arka plan thread'i; analiz edilmemiş satırları bir LLM'e gönderip kalıcı bilgileri çıkarıyor ve save/update aksiyonları öneriyor.
-3. **Bellek (RAG vektör deposu)** — çıkarılan bilgilerin düştüğü yer; her bilgi 0-1 arası bir güven skoru (confidence) ve tekrar teyitlerde artan bir `confirmation_count` alıyor. Var olan bir bilgiyle çelişen bir güncelleme önerisi, eğer mevcut bilgi iyi teyit edilmişse (`confirmation_count >= 3`) ve yeni iddia düşük güvenliyse (`< 0.8`) reddediliyor.
-4. **CommandHandler** — dosya okuma/yazma, klasör inceleme, kod çalıştırma gibi araçları dispatch eden katman; şu an çağrılar arasında stateless.
-5. **Project L2 Memory (Proje L2 Hafızası)** — Her projenin kendi klasöründe (repository) tutulan ve kodla birlikte taşınabilen yapısal bir dosya hafızası (`.ghost/project_memory.json`). Mimari kuralları, alınan kararları, kısıtlamaları ve bilinen hataları saklar. Ajan o projede çalışırken bu kurallar doğrudan sistem promptuna (System Prompt) enjekte edilir.
+**Start the Local Bridge (Host Machine):**
+```bash
+python -m uvicorn local_bridge.main:app --host 0.0.0.0 --port 8000
+```
 
-Planlanan bir ek, **"durum hafızası"** (working/state memory) katmanı — projeler arası geçişte aktif proje, açık dosyalar ve devam eden görevi, uzun vadeli RAG hafızasından ayrı olarak takip etmek için.
+**Start the Core Engine:**
+```bash
+python core_server.py
+# Or: uvicorn core_server:app --host 0.0.0.0 --port 8001
+```
 
-## Ses / Arayüz
+**Start the Frontend:**
+```bash
+cd frontend
+npm run dev
+```
 
-- **CustomTkinter** ile yazılmış özel masaüstü arayüzü.
-- PIL tabanlı animasyonlu bir orb; yumuşak anti-aliased render için Pillow supersampling ile yeniden yapıldı.
-- Konuşma tanıma için Vosk tabanlı ses aktivitesi algılama (VAD) (önceki bir aşamada).
+### 3. Running with Docker Compose
 
-## Öne çıkan düzeltmeler ve kilometre taşları
+To run the Ghost Core brain inside a container while keeping the Local Bridge on the host:
 
-- Özel bir agentic loop'tan LangGraph/StateGraph'a geçiş.
-- ChromaDB tabanlı RAG hafızasının entegrasyonu (önceki bir iterasyonda `nomic-embed` ile).
-- `planner.py`'nin aktif loop'tan çıkarılması (dosya duruyor, kullanılmıyor) — her komuttan önce, en basit olanlarda bile, senkron bir LLM çağrısı eklediği fark edildikten sonra; büyük bir performans kazanımı.
-- Supervisor'ın eski (stale) mesaj geçmişini okumasından kaynaklanan sonsuz tool-call döngülerinin düzeltilmesi.
-- Yanıtları sessizce düşüren bir `GOREV_BITTI` tag-stripping hatasının düzeltilmesi.
-- Context'te biriken Spotify başarı mesajlarının modele sahte tool call yapmayı "öğrettiği" bir format taklidi (format imitation) hatasının düzeltilmesi.
-- Doğru cihaz uyandırma (device wakeup) yönetimiyle Spotify entegrasyonu.
-- Tek parça monolitik dosyadan modüler bir yapıya (`ui/`, `handlers/`, `core/`, `ai/` vb.) geçiş.
-- Şu anda üzerinde çalışılan: bir **format drift hatası** — model, yapılandırılmış routing tag'lerini korumak yerine önceki konuşmadaki doğal dil kalıplarını taklit ediyor.
+```bash
+# 1. Start Local Bridge on your host machine
+python -m uvicorn local_bridge.main:app --host 0.0.0.0 --port 8000
 
-## Yol haritası
+# 2. Build and launch Ghost Core via Docker
+docker-compose up --build
+```
 
-- **"Dijital ikiz" (digital twin) yönlendirmesi** — Ghost'u bir asistandan, kullanıcı adına kişisel görevler yürütebilen bir ajana (notları gözden geçirme, burs başvurularını doldurma, belgelere erişim) evriltmek.
-- **İkili hafıza mimarisi** — hafızayı ikiye bölmek:
-  - *Genel hafıza*: mevcut EpisodicDB/SQLite + LibrarianAgent + vektör DB, sohbet ve günlük görevler için.
-  - *Proje hafızası* (yeni): `ProjeKodBellek`/ChromaDB + AST tabanlı sembol haritası (JSON) + kod arama araçları, kodlama/proje görevleri için — supervisor ikisi arasında yönlendirme yapacak ve genel hafızanın kod düzeyindeki detayı tekrar etmeden yakın proje bağlamına referans verebilmesi için hafif bir SQL-seviyesi bağlantı olacak.
-- **Taşınabilir proje algılama** — sabit kodlanmış klasör adı sezgilerinden, "bir kere sor, sonra hatırla" mantığıyla path-to-name eşlemesine geçiş; böylece Ghost başka kullanıcılar için bir ürüne dönüşürse yaklaşım taşınabilir kalır (şu an tüm yerel projeler geliştiricinin makinesinde sabit bir yol altında duruyor).
-- **İnsan onaylı (human-in-the-loop) doğrulama** — bağlam eksik olduğunda (örn. görülmemiş bir kod üzerinde işlem yapmadan önce) Ghost'un varsayımda bulunmak yerine netleştirici bir soru sorması.
-- **Core/frontend ayrımı** — Ghost'u kalıcı bir core backend'e (LangGraph beyni, hafıza, araç dispatch) ve ince frontend adaptörlerine (masaüstü arayüzü, Telegram botu) bölmek; hepsi tek bir merkezi session store paylaşacak, böylece arayüz değiştirildiğinde aynı konuşma görünecek. Core'u uzaktan (Render/Docker) barındırıp, makineye bağlı araçlar (ekran yakalama, yerel Ollama, yerel dosyalar, WhatsApp tarayıcı oturumu) için yerel bir agent-bridge süreci kullanmak değerlendiriliyor.
+The container automatically maps `host.docker.internal` to connect back to the Local Bridge on port 8000.
 
-## Durum
+---
 
-2026'nın başından önce başlayan, aktif geliştirme sürecinde. Ana loop'tan planner/queue yükünün kaldırılmasının ardından performans belirgin şekilde arttı.
+## Testing & Quality
+
+Run the test suite with `pytest`:
+```bash
+pytest tests
+```
+
+Tests cover:
+* Bridge tool naming and canonical registry synchronization (`test_tool_naming.py`)
+* Bridge permission enforcement and token authentication (`test_bridge.py`)
+* Sandbox path containment and network constraints (`test_sandbox_runner.py`)
+* Filesystem path resolvers and command restrictions (`test_fs.py`)
+* AST symbol graph relationship extraction (`test_symbol_graph.py`)
+* Core server endpoints and headless session handling (`test_core_server.py`)
+
+---
+
+## Known Limitations
+
+* **Desktop Automation:** Vision capture and desktop GUI interactions require an active graphical desktop session and cannot operate in a headless cloud server without an attached X11/VNC display.
+* **Platform Differences:** Tool execution commands vary between Windows and Linux/macOS environments (e.g., protocol handlers vs. direct process binaries).
+* **Model Inference Latency:** Agentic graph loops depend on LLM response speeds; tool-calling iterations introduce network and processing delays.
+
+---
+
+## Roadmap (v2 Focus)
+
+- [ ] **Native Container Sandbox for Code Execution:** Transition code execution tasks from audit-hook subprocesses to disposable Docker containers.
+- [ ] **Full Multi-Session Concurrency:** Complete unified state synchronization across multiple simultaneous client adapters (Web UI, Telegram, Voice).
+- [ ] **Working State Memory:** Expand episodic RAG memory with active project workspace context persistence across restarts.
+
+---
+
+## Türkçe Kısa Özet
+
+**Ghost Operator (v2)**, LangGraph mimarisi üzerine kurulu, yerel öncelikli (local-first) bir otonom işletim sistemi ve görev asistanıdır.
+
+* **Ayrık Mimari:** Ajanın karar alma ve hafıza motoru (Core Server) ile masaüstü/donanım etkileşimleri (Local Bridge) birbirinden ayrılmıştır. Core sunucu Docker konteyneri içinde izole çalışabilirken, Local Bridge ana makinede ekran görüntüsü, WhatsApp ve dosya işlemlerini yönetir.
+* **Güvenlik:** API çağrıları zamanlama saldırılarına karşı `hmac.compare_digest` ile korunan `X-Ghost-Token` doğrulamasına tabidir. Masaüstü araçları `permissions.json` üzerinden fail-closed (varsayılan olarak kapalı) izin denetiminden geçer; kod çalıştırma işlemleri çalışma alanı köküyle kısıtlıdır.
+* **Kullanım:** `pytest tests` komutu ile tüm güvenlik ve işlev testleri çalıştırılabilir; Core ve Local Bridge servisleri bağımsız veya Docker Compose ile birlikte koşturulabilir.
